@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Menu rows now install under Omarchy's own **Style** submenu by default (it exists on every install); `desktop-widgets install --menu-parent <id>` for anywhere else. Existing hand-placed `*.widgets` rows are left alone.
+
 ## 0.4.0 — 2026-09-10
 - Public home: https://github.com/EvivrusR/omarchy-tears
 - `desktop-widgets install` / `uninstall` / `init`: one-command setup (CLI link, menu rows, keybinds, starter layout) with marker blocks that uninstall removes exactly.
