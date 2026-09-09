@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Grid snapping** in arrange mode: `desktop-widgets grid on|off|<px>`, Grid button in the editor, `G` / `[` / `]` while armed; top-level config settings (`grid`) are preserved by every writer.
 - **Presets**: `desktop-widgets preset list|show|apply|save|remove`; three shipped (`minimal`, `dashboard`, `column`), yours under `~/.config/omarchy/desktop-widgets.presets/`; **Presets…** dropdown in the editor.
 - **Stats `orientation`**: `vertical` stacks each bar under its label (first widget variant).
 - **Shape widgets**: `shape` type (rect / pill / circle / line; fill + alpha, border, radius, soft shadow) for translucent panels and dividers behind other widgets.

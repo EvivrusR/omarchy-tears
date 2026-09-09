@@ -224,6 +224,35 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
 
+    def test_grid_setting_round_trips_every_writer(self):
+        code, out, err = self.run_cli("grid")
+        self.assertEqual(code, 0); self.assertIn("off", out); self.assertIn("24", out)
+        self.assertEqual(self.run_cli("grid", "on")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": True, "size": 24})
+        self.assertEqual(self.run_cli("grid", "32")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": True, "size": 32})
+        self.assertEqual(self.run_cli("grid", "2")[0], 2); self.assertEqual(self.run_cli("grid", "huge")[0], 2)
+        # mutators keep it
+        self.assertEqual(self.run_cli("add", "clock")[0], 0)
+        self.assertEqual(self.run_cli("set", "0", "x=10")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"]["size"], 32)
+        # preset apply keeps it, and a preset never carries it
+        self.assertEqual(self.run_cli("preset", "save", "g")[0], 0)
+        user = self.home / ".config" / "omarchy" / "desktop-widgets.presets" / "g.jsonc"
+        self.assertNotIn("grid", json.loads(user.read_text()))
+        self.assertEqual(self.run_cli("preset", "apply", "minimal")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": True, "size": 32})
+        # write (editor path) keeps it when the document omits it, honours it when present
+        code, _, err = self.run_cli_stdin(json.dumps({"version": 1, "widgets": [{"type": "clock"}]}), "write")
+        self.assertEqual(code, 0, err); self.assertEqual(json.loads(self.cfg.read_text())["grid"]["size"], 32)
+        code, _, err = self.run_cli_stdin(json.dumps({"version": 1, "widgets": [], "grid": {"enabled": False, "size": 16}}), "write")
+        self.assertEqual(code, 0, err); self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": False, "size": 16})
+        self.assertEqual(self.run_cli("grid", "off")[0], 0)
+        code, out, _ = self.run_cli("validate")
+        self.assertEqual(code, 0)
+        self.cfg.write_text(json.dumps({"widgets": [], "grid": {"enabled": True, "size": 1}}))
+        code, out, err = self.run_cli("validate"); self.assertEqual(code, 1); self.assertIn("grid", err)
+
     def test_shipped_presets_validate(self):
         names = sorted(p.stem for p in (ROOT / "presets").glob("*.jsonc"))
         self.assertEqual(names, ["column", "dashboard", "minimal"])

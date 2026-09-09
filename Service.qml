@@ -26,6 +26,16 @@ Item {
   // file carries comments a JSON rewrite would drop.
   property var rawWidgets: []
   property var messages: []
+  // Top-level settings (everything but version/widgets), carried over by saveDoc.
+  property var settings: ({})
+  readonly property var grid: Registry.gridOf({ grid: settings.grid })
+  function setGrid(enabled, size) {
+    var g = Registry.gridOf({ grid: { enabled: enabled, size: size } })
+    var next = ({})
+    for (var k in settings) next[k] = settings[k]
+    next.grid = g
+    saveDoc(JSON.parse(JSON.stringify(rawWidgets)), null, next)
+  }
   property bool configHasComments: false
   property bool configParseFailed: false
 
@@ -74,10 +84,15 @@ Item {
 
   // Save a whole document through the CLI (validated, .bak kept). onDone(ok, message).
   property var saveCallback: null
-  function saveDoc(doc, onDone) {
+  function saveDoc(doc, onDone, withSettings) {
     if (writer.running) { log("saveDoc: writer busy, dropped"); if (onDone) onDone(false, "busy"); return }
     saveCallback = onDone || null
-    writer.pendingText = JSON.stringify({ version: 1, widgets: doc }, null, 2) + "\n"
+    var out = ({})
+    var st = withSettings || settings
+    for (var k in st) out[k] = st[k]
+    out.version = 1
+    out.widgets = doc
+    writer.pendingText = JSON.stringify(out, null, 2) + "\n"
     writer.running = true
   }
   Process {
@@ -110,7 +125,9 @@ Item {
     var place = Arrange.placeFor(rect, screen.width, screen.height)
     return commitPlace(key, index, place)
   }
+  function snap(place) { return grid.enabled ? Arrange.snapPlace(place, grid.size) : place }
   function commitPlace(key, index, place) {
+    place = snap(place)
     setOverride(key, place)
     var doc = JSON.parse(JSON.stringify(rawWidgets))
     if (!doc[index]) return "no widget " + index
@@ -128,7 +145,15 @@ Item {
     }
     function drag(index: string, dx: string, dy: string): string { return root.drag(Number(index), Number(dx), Number(dy)) }
     function rescan(): string { root.loadRegistry(); return "ok" }
-    function state(): string { return JSON.stringify({ arranging: root.arranging, widgets: root.widgets.length, geometries: Object.keys(root.geometries).length, overrides: Object.keys(root.overrides).length }) }
+    // grid on|off|toggle|<px>; anything else just reports.
+    function grid(value: string): string {
+      var v = String(value || "").trim().toLowerCase()
+      var g = root.grid
+      if (v === "on" || v === "off" || v === "toggle") root.setGrid(v === "on" ? true : v === "off" ? false : !g.enabled, g.size)
+      else if (v && !isNaN(Number(v))) root.setGrid(true, Number(v))
+      return JSON.stringify(root.grid)
+    }
+    function state(): string { return JSON.stringify({ arranging: root.arranging, widgets: root.widgets.length, geometries: Object.keys(root.geometries).length, overrides: Object.keys(root.overrides).length, grid: root.grid }) }
   }
 
   // Last good layout. A malformed edit keeps the previous one on screen.
@@ -167,6 +192,7 @@ Item {
       return
     }
     configParseFailed = false
+    settings = Registry.settingsOf(parsed)
     var result = Registry.validateConfig(parsed, registry)
     rawWidgets = result.widgets ? JSON.parse(JSON.stringify(result.widgets)) : []
     messages = result.messages

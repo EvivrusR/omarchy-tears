@@ -95,8 +95,36 @@ function validateEntry(entry, index, registry, messages) {
   for (var k in entry) if (!known[k]) push("warning", "unknown key '" + k + "'", k)
 }
 
+var GRID_DEFAULT = { enabled: false, size: 24 }, GRID_MIN = 4, GRID_MAX = 256
+
+// Top-level keys other than version/widgets (settings such as `grid`) — every
+// writer carries them over unchanged.
+function settingsOf(parsed) {
+  var out = {}
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return out
+  for (var k in parsed) if (k !== "version" && k !== "widgets") out[k] = parsed[k]
+  return out
+}
+
+function gridOf(parsed) {
+  var g = parsed && !Array.isArray(parsed) && parsed.grid && typeof parsed.grid === "object" ? parsed.grid : {}
+  var size = Number(g.size)
+  if (!isFinite(size)) size = GRID_DEFAULT.size
+  return { enabled: g.enabled === true, size: Math.min(GRID_MAX, Math.max(GRID_MIN, Math.round(size))) }
+}
+
+function validateGrid(parsed, messages) {
+  if (!parsed || Array.isArray(parsed) || parsed.grid === undefined) return
+  var g = parsed.grid
+  function push(m) { messages.push({ level: "error", widget: -1, key: "grid", message: m }) }
+  if (!g || typeof g !== "object" || Array.isArray(g)) { push("grid must be an object"); return }
+  if (g.enabled !== undefined && typeof g.enabled !== "boolean") push("grid.enabled must be true or false")
+  if (g.size !== undefined && !(isInt(g.size) && g.size >= GRID_MIN && g.size <= GRID_MAX)) push("grid.size must be an integer " + GRID_MIN + ".." + GRID_MAX)
+}
+
 function validateConfig(parsed, registry) {
   var messages = []
+  validateGrid(parsed, messages)
   var list = Array.isArray(parsed) ? parsed
     : (parsed && typeof parsed === "object" && Array.isArray(parsed.widgets) ? parsed.widgets : null)
   if (!list) {
@@ -113,4 +141,4 @@ function hasErrors(messages, index) {
   return false
 }
 
-if (typeof module !== "undefined") module.exports = { fieldsFor, applyDefaults, validateConfig, hasErrors, stackOrder }
+if (typeof module !== "undefined") module.exports = { fieldsFor, applyDefaults, validateConfig, hasErrors, stackOrder, settingsOf, gridOf }

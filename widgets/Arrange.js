@@ -21,4 +21,12 @@ function moveRect(rect, dx, dy, sw, sh) {
   return { x: x, y: y, w: rect.w, h: rect.h }
 }
 
-if (typeof module !== "undefined") module.exports = { rectFor, placeFor, moveRect }
+// Grid snapping applies to the offsets from the chosen corner, so a widget at
+// x: 48 stays at 48 on a 24-grid and layouts never drift. size <= 0 = off.
+function snapPlace(place, size) {
+  var g = Number(size) || 0
+  if (g <= 0) return place
+  return { corner: place.corner, x: Math.max(0, Math.round(place.x / g) * g), y: Math.max(0, Math.round(place.y / g) * g) }
+}
+
+if (typeof module !== "undefined") module.exports = { rectFor, placeFor, moveRect, snapPlace }
