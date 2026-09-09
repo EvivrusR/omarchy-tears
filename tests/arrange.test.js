@@ -37,3 +37,8 @@ test("snapPlace rounds the corner offsets to the grid and leaves size<=0 alone",
   assert.deepEqual(A.snapPlace({ corner: "top-left", x: 50, y: 61 }, 0), { corner: "top-left", x: 50, y: 61 });
   assert.deepEqual(A.snapPlace({ corner: "top-left", x: 50, y: 61 }, -8), { corner: "top-left", x: 50, y: 61 });
 });
+
+test("rectFor centres *-center corners horizontally and ignores x", () => {
+  assert.deepEqual(A.rectFor("bottom-center", 999, 24, 300, 60, SW, SH), { x: 810, y: 996, w: 300, h: 60 });
+  assert.deepEqual(A.rectFor("top-center", 0, 10, 100, 50, SW, SH), { x: 910, y: 10, w: 100, h: 50 });
+});

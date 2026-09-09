@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -26,7 +28,7 @@ RowLayout {
 
   Loader {
     id: control
-    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows"
+    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps"
     Layout.fillWidth: wide
     Layout.alignment: Qt.AlignVCenter
     sourceComponent: {
@@ -36,6 +38,7 @@ RowLayout {
         case "number": return numberComp
         case "enum": return root.field.key === "corner" ? cornerComp : enumComp
         case "multi-enum": return multiComp
+        case "apps": return appsComp
         case "rows": return rowsComp
         default: return textComp
       }
@@ -93,6 +96,31 @@ RowLayout {
       showLabel: false
       values: Array.isArray(root.value) ? root.value : []
       options: (root.field.options || []).map(function(o) { return { value: o, label: o } })
+      onChanged: function(vals) { root.edited(root.field.key, vals) }
+    }
+  }
+
+  // apps: the same desktop entries the Apps menu shows (minus Omarchy's hide list).
+  property var hides: ({})
+  FileView { path: "/usr/share/omarchy/default/omarchy/launcher.hides"; blockLoading: false; printErrors: false
+    onLoaded: { var h = {}; String(text()).split("\n").forEach(function(l) { l = l.trim(); if (l && l[0] !== "#") h[l] = true }); root.hides = h } }
+  Component {
+    id: appsComp
+    MultiSelect {
+      showLabel: false
+      placeholderText: "Search apps…"
+      values: Array.isArray(root.value) ? root.value : (root.value && typeof root.value.length === "number" ? Array.prototype.slice.call(root.value) : [])
+      options: {
+        var out = []
+        var list = DesktopEntries.applications.values || []
+        for (var i = 0; i < list.length; i++) {
+          var e = list[i]
+          if (e.noDisplay || root.hides[e.id]) continue
+          out.push({ value: e.id, label: e.name })
+        }
+        out.sort(function(a, b) { return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1 })
+        return out
+      }
       onChanged: function(vals) { root.edited(root.field.key, vals) }
     }
   }

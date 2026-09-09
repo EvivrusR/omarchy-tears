@@ -6,7 +6,7 @@
   ] },
   "expect": { "widgets": 3, "errors": 7, "warnings": 1,
     "messages": [
-      "widget 0: corner must be one of top-left, top-right, bottom-left, bottom-right",
+      "widget 0: corner must be one of top-left, top-right, bottom-left, bottom-right, top-center, bottom-center",
       "widget 0: x must be an integer",
       "widget 0: scale must be at most 4",
       "widget 0: unknown key 'bogus'",

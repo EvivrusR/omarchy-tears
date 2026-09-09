@@ -66,8 +66,8 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, or any drop-in |
-| `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right` |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, `dock`, or any drop-in |
+| `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right`, `top-center`, `bottom-center` (centre ignores `x`) |
 | `x`, `y` | 48 | offset from that corner, px |
 | `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
 | `enabled` | true | `false` hides the widget without deleting it |
@@ -118,6 +118,12 @@ Per type:
   widget's `z`, shown in the editor only then; the effect sits just above its own widget at equal z).
   `effectOpacity` 0.4 (multiplied by each effect's own preset opacity, so rain is never a wall), `effectDensity` 1,
   `effectFps` 6, `effectColor` (`foreground`). The animation timer only runs while something moves.
+- **dock**: a row of app icons that launch on click — the one widget that takes pointer input. It lives on the
+  wallpaper like everything else, so it is clickable wherever no window covers it and never reserves space.
+  `apps` (desktop-entry ids in order; `desktop-widgets apps` lists them, the editor has a searchable picker fed by
+  the same entries as Omarchy's Apps menu), `iconSize` 40, `spacing` 10, `labels` (names under icons; otherwise a
+  hover tooltip), `hoverScale` 1.2. Defaults to `bottom-center`, `y: 24`, `backdrop: 0.5`. Launches through
+  `uwsm-app -- gtk-launch <id>.desktop`, the way Omarchy's menu does.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
@@ -313,6 +319,7 @@ desktop-widgets status
 | `move <index> [--corner C] [--x N] [--y N]` | reposition |
 | `enable <index>` / `disable <index>` | keep the widget in the file but hide it |
 | `remove <index>` / `duplicate <index>` | delete, or copy into the next slot |
+| `apps [--json] [--all]` | desktop entries a dock can show (id + name) |
 | `grid [on\|off\|toggle\|<px>]` | show or set arrange-mode grid snapping |
 | `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
 | `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |

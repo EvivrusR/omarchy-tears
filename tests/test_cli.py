@@ -224,6 +224,30 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
 
+    def test_apps_listing_and_dock(self):
+        data = self.home / ".local" / "share" / "applications"; data.mkdir(parents=True)
+        (data / "Alacritty.desktop").write_text("[Desktop Entry]\nType=Application\nName=Alacritty\nIcon=Alacritty\n")
+        (data / "hidden.desktop").write_text("[Desktop Entry]\nType=Application\nName=Hidden\nNoDisplay=true\n")
+        (data / "link.desktop").write_text("[Desktop Entry]\nType=Link\nName=Link\n")
+        (data / "btop.desktop").write_text("[Desktop Entry]\nType=Application\nName=btop++\n")
+        os.environ["XDG_DATA_HOME"] = str(self.home / ".local" / "share"); os.environ["XDG_DATA_DIRS"] = str(self.home / "nowhere")
+        try:
+            apps = dw.list_apps(hides={"btop"})
+            self.assertEqual(apps["Alacritty"], {"name": "Alacritty", "icon": "Alacritty", "hidden": False})
+            self.assertTrue(apps["hidden"]["hidden"]); self.assertTrue(apps["btop"]["hidden"]); self.assertNotIn("link", apps)
+            code, out, _ = self.run_cli("apps"); self.assertEqual(code, 0); self.assertIn("Alacritty", out); self.assertNotIn("Hidden", out)
+            code, out, _ = self.run_cli("apps", "--json", "--all"); self.assertEqual({a["id"] for a in json.loads(out)["apps"]} >= {"Alacritty", "hidden"}, True)
+        finally:
+            os.environ.pop("XDG_DATA_HOME", None); os.environ.pop("XDG_DATA_DIRS", None)
+        code, out, err = self.run_cli("add", "dock", "--set", "apps=Alacritty,chromium")
+        self.assertEqual(code, 0, err)
+        e = json.loads(self.cfg.read_text())["widgets"][-1]
+        self.assertEqual(e["apps"], ["Alacritty", "chromium"]); self.assertNotIn("corner", e)   # default corner comes from the type
+        self.assertEqual(dw.apply_defaults(e, REGISTRY)["corner"], "bottom-center")
+        code, out, _ = self.run_cli("list"); self.assertIn("Alacritty,chromium", out); self.assertIn("bottom-center", out)
+        code, out, _ = self.run_cli("types", "dock"); self.assertIn("bottom-center", out)
+        self.assertEqual(self.run_cli("set", "2", "corner=middle")[0], 1)
+
     def test_grid_setting_round_trips_every_writer(self):
         code, out, err = self.run_cli("grid")
         self.assertEqual(code, 0); self.assertIn("off", out); self.assertIn("24", out)

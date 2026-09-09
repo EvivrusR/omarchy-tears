@@ -60,3 +60,8 @@ test("fieldsFor honours omitCommon", () => {
   const keys = M.fieldsFor("shape", registry).map((x) => x.key);
   assert.ok(keys.includes("z") && keys.includes("kind") && !keys.includes("color"));
 });
+
+test("newEntry uses the type's default corner", () => {
+  assert.deepEqual(M.newEntry("dock", registry), { type: "dock", corner: "bottom-center" });
+  assert.deepEqual(M.newEntry("clock", registry), { type: "clock", corner: "top-right" });
+});

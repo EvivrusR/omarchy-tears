@@ -83,3 +83,11 @@ test("needsRebuild only when existing windows' relative order changes or a new o
   assert.equal(R.needsRebuild([], ["a", "b"]), false);
   assert.equal(R.needsRebuild(["a"], []), false);
 });
+
+test("per-type defaults override common defaults (dock is bottom-center with a backdrop)", () => {
+  const e = R.applyDefaults({ type: "dock" }, registry);
+  assert.equal(e.corner, "bottom-center"); assert.equal(e.backdrop, 0.5); assert.equal(e.y, 24); assert.deepEqual(e.apps, []);
+  assert.equal(R.applyDefaults({ type: "clock" }, registry).corner, "top-right");
+  assert.equal(R.fieldsFor("dock", registry).find((f) => f.key === "corner").default, "bottom-center");
+  assert.equal(R.fieldsFor("clock", registry).find((f) => f.key === "corner").default, "top-right");
+});
