@@ -83,7 +83,8 @@ Keys every widget accepts:
 Per type:
 
 - **clock**: `timeFormat` (`HH:mm`), `dateFormat` (`dddd d MMMM`, empty string hides it). Qt date format strings.
-- **stats**: `show` (any of `cpu`, `mem`, `disk`, `battery`), `intervalSec` (3), `diskPath` (`/`).
+- **stats**: `show` (any of `cpu`, `mem`, `disk`, `battery`), `intervalSec` (3), `diskPath` (`/`),
+  `orientation` (`horizontal`; `vertical` stacks each bar under its label for a narrow column).
   Battery only appears when a `/sys/class/power_supply/BAT*` exists.
 - **command**: `command` (run with `bash -lc`), `intervalSec` (60), `timeoutSec` (10), `maxLines` (8),
   `maxWidth` (420 px), `title`. A non-zero exit keeps the last good output and shows a red `!` by the title.
@@ -152,6 +153,24 @@ section of `~/.config/omarchy/shell.json` (hot-reloads); leave it out if you
 don't want it. Omarchy 4.0.3's `omarchy plugin enable … right` / `omarchy bar put`
 do not place it because the plugin is already listed under `plugins[]` for its
 service — a known quirk of mixed-kind plugins.
+
+## Presets (whole-screen layouts)
+
+A preset is a complete `widgets[]` layout you apply in one go. Three ship with the
+plugin — `minimal` (one big clock), `dashboard` (the example layout on a panel) and
+`column` (a narrow left column: panel, small clock, vertical stats, Claude session) —
+and you keep your own under `~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`
+(same format as the config, plus an optional `"description"`; a preset of yours with
+a shipped name wins).
+
+```bash
+desktop-widgets preset save mine            # keep what's on screen now
+desktop-widgets preset apply column         # try another layout (previous one is in .bak)
+desktop-widgets preset apply mine           # and back
+```
+
+The editor has a **Presets…** dropdown (disabled while you have unsaved edits); it
+applies through the same CLI path and the panel follows the file.
 
 ## Template widgets (no code)
 
@@ -254,6 +273,9 @@ desktop-widgets status
 | `move <index> [--corner C] [--x N] [--y N]` | reposition |
 | `enable <index>` / `disable <index>` | keep the widget in the file but hide it |
 | `remove <index>` / `duplicate <index>` | delete, or copy into the next slot |
+| `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
+| `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |
+| `preset save <name> [--force] [--description …]` / `remove <name>` | keep the current layout as a preset of yours / delete one of yours |
 | `edit` | open in `$VISUAL`/`$EDITOR`, validate on save, keep `.bak`; comments survive |
 | `status [--enabled]` | plugin enabled?, config health, windows on screen, last log lines; `--enabled` is a plain exit code for scripts |
 | `toggle` | `omarchy plugin enable`/`disable` the plugin |

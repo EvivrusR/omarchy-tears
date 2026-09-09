@@ -4,7 +4,7 @@ homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
 
 Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
 two engines identical."""
-import argparse, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, datetime, json, os, re, shutil, subprocess, sys, tempfile
 
 PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -549,6 +549,95 @@ def cmd_editor(args, ctx):
     return 0 if rc == 0 else 2
 
 
+# ---------------------------------------------------------------- presets
+PRESET_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+SHIPPED_PRESETS = os.path.join(PLUGIN_DIR, "presets")
+
+
+def preset_dir():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "omarchy", "desktop-widgets.presets")
+
+
+def load_presets(registry):
+    """name -> {name, origin, path, description, widgets, valid, problems}. User presets shadow shipped ones."""
+    out = {}
+    for origin, d in (("shipped", SHIPPED_PRESETS), ("user", preset_dir())):
+        if not os.path.isdir(d): continue
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".jsonc") and not fn.endswith(".json"): continue
+            name = fn.rsplit(".", 1)[0]
+            if not PRESET_NAME.match(name): continue
+            path = os.path.join(d, fn)
+            info = {"name": name, "origin": origin, "path": path, "description": "", "widgets": 0, "valid": True, "problems": []}
+            try:
+                parsed, _ = read_config(path)
+                widgets, messages = validate_config(parsed, registry) if parsed is not None else (None, [])
+                errs = [m for m in messages if m["level"] == "error"]
+                if widgets is None or errs:
+                    info["valid"] = False; info["problems"] = [m["message"] for m in errs] or ["not a widgets document"]
+                else:
+                    info["widgets"] = len(widgets)
+                if isinstance(parsed, dict): info["description"] = str(parsed.get("description", "") or "")
+            except ValueError as e:
+                info["valid"] = False; info["problems"] = [str(e)]
+            out[name] = info
+    return out
+
+
+def cmd_preset(args, ctx):
+    presets = load_presets(ctx["registry"])
+    op = args.op
+    if op == "list":
+        if args.json:
+            print(json.dumps({"presets": [{k: v for k, v in p.items() if k != "path"} for p in presets.values()]}, indent=2)); return 0
+        for p in presets.values():
+            state = "INVALID: " + "; ".join(p["problems"]) if not p["valid"] else f"{p['widgets']} widget(s)"
+            print(f"{p['name']:<16} {p['origin']:<8} {state:<14} {p['description']}")
+        if not presets: print("no presets")
+        return 0
+    name = args.name or ""
+    if op in ("show", "apply", "remove") and name not in presets:
+        print(f"unknown preset '{name}' (see `desktop-widgets preset list`)", file=sys.stderr); return 2
+    if op == "show":
+        with open(presets[name]["path"]) as fh: print(fh.read(), end=""); return 0
+    if op == "apply":
+        p = presets[name]
+        if not p["valid"]:
+            print(f"preset '{name}' is invalid: " + "; ".join(p["problems"]), file=sys.stderr); return 1
+        parsed, _ = read_config(p["path"])
+        widgets, _ = validate_config(parsed, ctx["registry"])
+        raw = None
+        if os.path.exists(ctx["path"]):
+            with open(ctx["path"]) as fh: raw = fh.read()
+        write_config(ctx["path"], {"version": 1, "widgets": widgets}, raw)
+        print(f"applied preset '{name}' ({len(widgets)} widget(s)) to {ctx['path']}" + (" (previous layout in desktop-widgets.json.bak)" if raw is not None else ""))
+        return 0
+    if op == "save":
+        if not PRESET_NAME.match(name):
+            print("preset names: lowercase letters, digits and dashes, starting with a letter", file=sys.stderr); return 2
+        try:
+            parsed, _ = read_config(ctx["path"])
+        except ValueError as e:
+            print(f"ERROR   {e}", file=sys.stderr); return 1
+        if parsed is None: print(f"no config at {ctx['path']}", file=sys.stderr); return 1
+        widgets, messages = validate_config(parsed, ctx["registry"])
+        if widgets is None or any(m["level"] == "error" for m in messages):
+            print_messages(messages, sys.stderr); print("current layout is invalid; not saved", file=sys.stderr); return 1
+        dest = os.path.join(preset_dir(), name + ".jsonc")
+        if os.path.exists(dest) and not args.force:
+            print(f"{dest} exists (use --force to replace it)", file=sys.stderr); return 2
+        os.makedirs(preset_dir(), exist_ok=True)
+        doc = {"version": 1, "description": args.description or f"saved {datetime.date.today().isoformat()}", "widgets": widgets}
+        with open(dest, "w") as fh: fh.write(json.dumps(doc, indent=2) + "\n")
+        print(f"saved {len(widgets)} widget(s) as preset '{name}' -> {dest}"); return 0
+    if op == "remove":
+        p = presets[name]
+        if p["origin"] != "user": print(f"'{name}' is a shipped preset; only user presets under {preset_dir()} can be removed", file=sys.stderr); return 2
+        os.remove(p["path"]); print(f"removed {p['path']}"); return 0
+    return 2
+
+
 # ---------------------------------------------------------------- install
 MENU_BEGIN, MENU_END = "  // desktop-widgets:begin", "  // desktop-widgets:end"
 LUA_BEGIN, LUA_END = "-- desktop-widgets:begin", "-- desktop-widgets:end"
@@ -711,6 +800,10 @@ def build_parser():
     sub.add_parser("list", help="list widgets").set_defaults(fn=cmd_list)
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
+    pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
+    pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")
+    pr.add_argument("--json", action="store_true"); pr.add_argument("--force", action="store_true"); pr.add_argument("--description", default="")
+    pr.set_defaults(fn=cmd_preset)
     n = sub.add_parser("new", help="scaffold a drop-in widget type under ~/.config/omarchy/desktop-widgets.d/"); n.add_argument("name"); n.add_argument("--force", action="store_true"); n.set_defaults(fn=cmd_new)
     def idx(sp):
         sp.add_argument("index", type=int); sp.add_argument("--force", action="store_true", help="write even if the file has comments")

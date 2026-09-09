@@ -1,0 +1,9 @@
+{
+  // Just a big clock, top-right. Nothing else on the wallpaper.
+  "version": 1,
+  "description": "A single large clock, top-right",
+  "widgets": [
+    { "type": "clock", "corner": "top-right", "x": 56, "y": 72, "scale": 1.4,
+      "timeFormat": "HH:mm", "dateFormat": "dddd d MMMM" },
+  ],
+}

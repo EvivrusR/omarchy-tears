@@ -1,0 +1,23 @@
+{
+  // The example layout with a translucent panel behind the stats block.
+  "version": 1,
+  "description": "Clock, stats on a panel, uptime, load, Claude session",
+  "widgets": [
+    { "type": "clock", "corner": "top-right", "x": 48, "y": 64,
+      "timeFormat": "HH:mm", "dateFormat": "dddd d MMMM" },
+    { "type": "shape", "corner": "bottom-left", "x": 24, "y": 24, "z": -1,
+      "kind": "rect", "width": 300, "height": 150, "fill": "background", "alpha": 0.4, "borderWidth": 1, "borderAlpha": 0.5 },
+    { "type": "stats", "corner": "bottom-left", "x": 48, "y": 48,
+      "show": ["cpu", "mem", "disk", "battery"], "intervalSec": 3 },
+    { "type": "command", "corner": "bottom-right", "x": 48, "y": 48,
+      "title": "UPTIME", "command": "uptime -p", "intervalSec": 60, "maxLines": 4 },
+    { "type": "agents", "corner": "top-left", "x": 48, "y": 64, "agent": "claude" },
+    { "type": "template", "corner": "bottom-right", "x": 48, "y": 140, "intervalSec": 10,
+      "command": "python3 -c 'import json,os; l=os.getloadavg(); print(json.dumps({\"l1\":l[0],\"l5\":l[1],\"cpus\":os.cpu_count()}))'",
+      "rows": [
+        { "kind": "heading", "text": "LOAD" },
+        { "kind": "kv",  "label": "1 / 5 min", "value": "{l1|fixed:2} / {l5|fixed:2}" },
+        { "kind": "bar", "label": "1m", "value": "{l1}", "text": "{l1|fixed:2}", "max": "{cpus}", "warnAt": 0.9 },
+      ] },
+  ],
+}

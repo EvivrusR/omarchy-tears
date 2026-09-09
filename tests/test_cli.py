@@ -224,6 +224,53 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
 
+    def test_shipped_presets_validate(self):
+        names = sorted(p.stem for p in (ROOT / "presets").glob("*.jsonc"))
+        self.assertEqual(names, ["column", "dashboard", "minimal"])
+        for n in names:
+            code, out, err = self.run_cli("validate", str(ROOT / "presets" / f"{n}.jsonc"))
+            self.assertEqual(code, 0, f"{n}: {err}")
+            self.assertIn("0 warning", out, n)
+
+    def test_preset_list_apply_save_remove(self):
+        code, out, _ = self.run_cli("preset", "list")
+        self.assertEqual(code, 0); self.assertIn("minimal", out); self.assertIn("shipped", out)
+        code, out, _ = self.run_cli("preset", "list", "--json")
+        j = json.loads(out); self.assertEqual({p["name"] for p in j["presets"]} >= {"minimal", "dashboard", "column"}, True)
+        self.assertTrue(all(p["origin"] == "shipped" and p["widgets"] > 0 and "description" in p for p in j["presets"]))
+        code, out, _ = self.run_cli("preset", "show", "minimal")
+        self.assertEqual(code, 0); self.assertIn('"clock"', out)
+        # save current (2 widgets) as a user preset, apply minimal, then restore
+        code, out, err = self.run_cli("preset", "save", "mine")
+        self.assertEqual(code, 0, err)
+        user = self.home / ".config" / "omarchy" / "desktop-widgets.presets" / "mine.jsonc"
+        self.assertTrue(user.exists())
+        self.assertEqual(self.run_cli("preset", "save", "mine")[0], 2)          # no overwrite without --force
+        self.assertEqual(self.run_cli("preset", "save", "mine", "--force")[0], 0)
+        code, out, err = self.run_cli("preset", "apply", "minimal")
+        self.assertEqual(code, 0, err)
+        cfg = json.loads(self.cfg.read_text())
+        self.assertEqual([w["type"] for w in cfg["widgets"]], ["clock"]); self.assertEqual(cfg["widgets"][0]["scale"], 1.4)
+        self.assertTrue(self.cfg.with_name("desktop-widgets.json.bak").exists())
+        code, out, err = self.run_cli("preset", "apply", "mine")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(json.loads(self.cfg.read_text())["widgets"]), 2)
+        # user preset shadows a shipped name
+        (user.parent / "minimal.jsonc").write_text('{"widgets": [{"type": "stats"}, {"type": "stats"}]}')
+        code, out, _ = self.run_cli("preset", "list")
+        self.assertIn("user", [l for l in out.splitlines() if l.startswith("minimal")][0])
+        self.run_cli("preset", "apply", "minimal")
+        self.assertEqual(len(json.loads(self.cfg.read_text())["widgets"]), 2)
+        # errors
+        self.assertEqual(self.run_cli("preset", "apply", "nope")[0], 2)
+        self.assertEqual(self.run_cli("preset", "save", "Bad Name")[0], 2)
+        (user.parent / "broken.jsonc").write_text('{"widgets": [{"type": "nope"}]}')
+        self.assertEqual(self.run_cli("preset", "apply", "broken")[0], 1)
+        code, out, _ = self.run_cli("preset", "list")
+        self.assertIn("INVALID", [l for l in out.splitlines() if l.startswith("broken")][0])
+        self.assertEqual(self.run_cli("preset", "remove", "mine")[0], 0); self.assertFalse(user.exists())
+        self.assertEqual(self.run_cli("preset", "remove", "dashboard")[0], 2)  # shipped: never removed
+
     def test_shape_omits_common_and_list_shows_z(self):
         keys = [f["key"] for f in dw.fields_for("shape", dw.load_registry())]
         self.assertIn("kind", keys); self.assertIn("z", keys); self.assertNotIn("color", keys)

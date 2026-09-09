@@ -8,7 +8,8 @@ WidgetCard {
   readonly property var show: listOf(config.show) || ["cpu", "mem", "disk", "battery"]
   readonly property int intervalSec: Math.max(1, parseInt(config.intervalSec) || 3)
   readonly property string diskPath: String(config.diskPath || "/")
-  readonly property int barWidth: Math.round(Style.space(120) * scale_)
+  readonly property bool vertical: String(config.orientation || "horizontal") === "vertical"
+  readonly property int barWidth: Math.round(Style.space(vertical ? 180 : 120) * scale_)
 
   property var prevCpu: null
   property var cpu: null
@@ -54,10 +55,58 @@ WidgetCard {
     onTriggered: if (!sampler.running) sampler.running = true
   }
 
+  // Bar shared by both layouts.
+  component Bar: Rectangle {
+    property var row: ({})
+    height: Math.max(3, Math.round(Style.space(5) * root.scale_))
+    radius: height / 2
+    color: root.outlineColor.a > 0 ? Util.alpha(root.outlineColor, 0.25) : Util.alpha(root.textColor, 0.15)
+    border.width: root.outlineColor.a > 0 ? 1 : 0
+    border.color: Util.alpha(root.outlineColor, 0.85)
+    Rectangle {
+      width: row.pct === null || row.pct === undefined ? 0 : parent.width * row.pct / 100
+      height: parent.height
+      radius: parent.radius
+      color: row.pct !== null && row.pct !== undefined && row.pct >= 90 ? Color.urgent : root.textColor
+      Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+    }
+  }
+
+  // Vertical: label left / value right on one line, the bar underneath at full column width.
   Column {
+    visible: root.vertical
+    spacing: Math.round(Style.space(8) * root.scale_)
+    Repeater {
+      model: root.vertical ? root.rows : []
+      Column {
+        required property var modelData
+        spacing: Math.round(Style.space(3) * root.scale_)
+        Item {
+          width: root.barWidth
+          height: Math.round(Style.font.body * 1.3 * root.scale_)
+          WidgetText {
+            outlineColor: root.outlineColor; halo: root.halo
+            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+            text: modelData.label; color: root.mutedColor
+            font.family: Style.font.resolvedFamily; font.pixelSize: Math.round(Style.font.body * root.scale_)
+          }
+          WidgetText {
+            outlineColor: root.outlineColor; halo: root.halo
+            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+            text: modelData.text; color: root.textColor
+            font.family: Style.font.resolvedFamily; font.pixelSize: Math.round(Style.font.body * root.scale_)
+          }
+        }
+        Bar { row: modelData; width: root.barWidth }
+      }
+    }
+  }
+
+  Column {
+    visible: !root.vertical
     spacing: Math.round(Style.space(6) * root.scale_)
     Repeater {
-      model: root.rows
+      model: root.vertical ? [] : root.rows
       Row {
         required property var modelData
         spacing: Math.round(Style.space(8) * root.scale_)
@@ -70,22 +119,7 @@ WidgetCard {
           font.pixelSize: Math.round(Style.font.body * root.scale_)
           anchors.verticalCenter: parent.verticalCenter
         }
-        Rectangle {
-          width: root.barWidth
-          height: Math.max(3, Math.round(Style.space(5) * root.scale_))
-          radius: height / 2
-          color: root.outlineColor.a > 0 ? Util.alpha(root.outlineColor, 0.25) : Util.alpha(root.textColor, 0.15)
-          border.width: root.outlineColor.a > 0 ? 1 : 0
-          border.color: Util.alpha(root.outlineColor, 0.85)
-          anchors.verticalCenter: parent.verticalCenter
-          Rectangle {
-            width: modelData.pct === null ? 0 : parent.width * modelData.pct / 100
-            height: parent.height
-            radius: parent.radius
-            color: modelData.pct !== null && modelData.pct >= 90 ? Color.urgent : root.textColor
-            Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
-          }
-        }
+        Bar { row: modelData; width: root.barWidth; anchors.verticalCenter: parent.verticalCenter }
         WidgetText {
           outlineColor: root.outlineColor; halo: root.halo
           width: Math.round(Style.space(40) * root.scale_)
