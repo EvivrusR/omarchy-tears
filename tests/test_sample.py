@@ -62,6 +62,7 @@ class Sysinfo(unittest.TestCase):
     def test_live(self):
         out = json.loads(subprocess.run([sys.executable, str(ROOT / "bin" / "dw-sysinfo"), "--logo", "omarchy"], capture_output=True, text=True, timeout=10).stdout)
         self.assertTrue(out["host"]); self.assertIn("kernel", out); self.assertTrue(len(out["logo"]) > 5)
+        self.assertNotIn("dw-sysinfo", out.get("shell", "")); self.assertNotIn("python", out.get("shell", ""))
         self.assertEqual(json.loads(subprocess.run([sys.executable, str(ROOT / "bin" / "dw-sysinfo"), "--logo", "none"], capture_output=True, text=True, timeout=10).stdout)["logo"], [])
 
 

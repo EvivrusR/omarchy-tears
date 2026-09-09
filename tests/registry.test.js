@@ -98,3 +98,14 @@ test("dock iconStyle is a bar-wide three-way enum", () => {
   const out = R.validateConfig({ widgets: [{ type: "dock", iconStyle: "rainbow" }] }, registry);
   assert.equal(out.messages.filter((m) => m.level === "error").length, 1);
 });
+
+test("sysinfo art is a dropdown of common logos plus none/custom; custom reveals name/art/file", () => {
+  const f = R.fieldsFor("sysinfo", registry);
+  const logo = f.find((x) => x.key === "logo");
+  assert.ok(logo.options.includes("omarchy") && logo.options.includes("arch") && logo.options.includes("none") && logo.options.includes("custom"));
+  assert.equal(logo.default, "omarchy");
+  for (const k of ["logoName", "art", "artFile"]) assert.deepEqual(f.find((x) => x.key === k).showWhen, { logo: "custom" });
+  assert.equal(f.find((x) => x.key === "art").type, "text");
+  const out = R.validateConfig({ widgets: [{ type: "sysinfo", logo: "custom", art: "a\nb" }, { type: "sysinfo", logo: "arch_small_xx" }, { type: "sysinfo", art: 3 }] }, registry);
+  assert.deepEqual(out.messages.filter((m) => m.level === "error").map((m) => m.widget), [1, 2]);
+});

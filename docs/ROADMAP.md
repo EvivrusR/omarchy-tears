@@ -266,6 +266,10 @@ honest), then the mirror and tag. About an evening on top of Phase 3.
 
 Spec `docs/superpowers/specs/2026-09-10-round2-design.md`. Built the same day on stacked branches `feat/grid-snap` → `feat/monitor-family` → `feat/weather` → `feat/dock`: grid snapping; battery / sysinfo / monitor widgets (+ `ops` preset); weather widget + full-screen ASCII weather effect with back/front/custom placement; launcher dock (wallpaper-layer, first input-taking widget). Each has a plan with a status table under `docs/superpowers/plans/`.
 
+## Backlog additions (2026-09-10, after v0.5.0)
+
+5. **Pet widget** — Hermes-Pets-style sprite that reacts to signals (Claude usage, battery, active agents…); scoped in `docs/superpowers/specs/2026-09-10-pet-widget-design.md`, awaiting Michael's three decisions.
+
 ## Order and what needs Michael's word
 
 1. Phase 1 registry + CLI + JSONC — recommended to start now; no decisions needed beyond "go".

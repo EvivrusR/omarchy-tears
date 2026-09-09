@@ -152,7 +152,7 @@ def _check_field(f, value, push):
                 push("error", f"{f['key']}.{r} must be an object"); continue
             if str(row.get("kind")) not in f.get("options", []):
                 push("error", f"{f['key']}.{r} has unknown kind '{row.get('kind')}'")
-    elif t in ("string", "path", "command", "color"):
+    elif t in ("string", "path", "command", "color", "text"):
         if not isinstance(value, str): push("error", f"{f['key']} must be a string")
 
 
@@ -361,6 +361,8 @@ def parse_value(field, text):
         raise ValueError(f"{field['key']} must be true or false")
     if t in ("multi-enum", "apps"):
         return [s.strip() for s in text.split(",") if s.strip()]
+    if t == "text":
+        return text.replace("\\n", "\n")   # `--set art="line1\nline2"` from a shell
     return text
 
 
