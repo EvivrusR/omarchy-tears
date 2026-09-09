@@ -113,7 +113,7 @@ omarchy-shell shell toggle homelab.desktop-widgets '{}'  # what that runs
 - Scriptable: `omarchy-shell shell call homelab.desktop-widgets call '{"op":"add","type":"clock"}'`
   (ops: `select{index}`, `add{type}`, `remove`, `duplicate`, `move{dir}`, `set{key,value}`, `toggleEnabled{index}`, `save`, `revert`, `applyOnChange{value}`, `state`).
 
-Menu: *Desktop widgets* › **Editor** (under Household if you have that submenu). `desktop-widgets install` adds the SUPER+ALT+W / SUPER+ALT+A binds; SUPER+SHIFT+W is Omawrite on a stock Omarchy, which is why ALT.
+Menu: Style › *Desktop widgets* › **Editor** (`desktop-widgets install --menu-parent <id>` puts the rows under another submenu, `''` for top level). `desktop-widgets install` adds the SUPER+ALT+W / SUPER+ALT+A binds; SUPER+SHIFT+W is Omawrite on a stock Omarchy, which is why ALT.
 
 ## Arrange mode (drag-to-place)
 
@@ -258,19 +258,21 @@ would produce an invalid config is refused with the reasons.
 
 ## Omarchy menu
 
-Rows for the Omarchy menu (`~/.config/omarchy/extensions/omarchy-menu.jsonc`, hot-reloads).
-Absolute paths via `$HOME` because the shell's environment need not include `~/.local/bin`.
+`desktop-widgets install` writes these rows under Omarchy's own **Style** submenu
+(`~/.config/omarchy/extensions/omarchy-menu.jsonc`, hot-reloads) — Style exists on
+every install, so nothing needs to be created first. Absolute paths via `$HOME`
+because the shell's environment need not include `~/.local/bin`.
 
 ```jsonc
-"household.widgets":         {"icon":"󱂬","label":"Desktop widgets","aliases":["widgets"],"description":"Wallpaper-layer widgets"},
-"household.widgets.editor":  {"icon":"󰏫","label":"Editor","action":"omarchy-shell shell toggle homelab.desktop-widgets '{}'"},
-"household.widgets.edit":    {"icon":"","label":"Edit config","action":"omarchy-launch-terminal $HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets edit"},
-"household.widgets.status":  {"icon":"󰋼","label":"Status","action":"omarchy-launch-floating-terminal-with-presentation \"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status; read -n1 -s -r -p 'press any key'\""},
-"household.widgets.enabled": {"icon":"󰔡","label":"Enabled","checked":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status --enabled","action":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets toggle"},
-"household.widgets.restart": {"icon":"","label":"Restart shell","action":"omarchy-restart-shell"},
+"style.widgets":         {"icon":"󱂬","label":"Desktop widgets","aliases":["widgets"],"description":"Wallpaper-layer widgets"},
+"style.widgets.editor":  {"icon":"󰏫","label":"Editor","action":"omarchy-shell shell toggle homelab.desktop-widgets '{}'"},
+"style.widgets.edit":    {"icon":"","label":"Edit config","action":"omarchy-launch-terminal $HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets edit"},
+"style.widgets.status":  {"icon":"󰋼","label":"Status","action":"omarchy-launch-floating-terminal-with-presentation \"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status; read -n1 -s -r -p 'press any key'\""},
+"style.widgets.enabled": {"icon":"󰔡","label":"Enabled","checked":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status --enabled","action":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets toggle"},
+"style.widgets.restart": {"icon":"","label":"Restart shell","action":"omarchy-restart-shell"},
 ```
 
-Replace `household` with whichever submenu you keep such rows in.
+`--menu-parent household` (or any submenu id, `''` for top level) puts them elsewhere; an existing `*.widgets` submenu is left alone.
 
 ## Developing
 

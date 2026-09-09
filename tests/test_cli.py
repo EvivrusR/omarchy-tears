@@ -257,7 +257,8 @@ class Cli(unittest.TestCase):
         self.assertTrue(link.is_symlink()); self.assertEqual(os.path.realpath(link), os.path.realpath(ROOT / "bin" / "desktop-widgets"))
         self.assertTrue(self.cfg.exists())
         m = menu.read_text(); b = binds.read_text()
-        self.assertIn("desktop-widgets:begin", m); self.assertIn('"household.widgets"', m); self.assertIn('"household.widgets.editor"', m)
+        self.assertIn("desktop-widgets:begin", m); self.assertIn('"style.widgets"', m); self.assertIn('"style.widgets.editor"', m)
+        self.assertNotIn("household.widgets", m)   # Style is the default home even when Household exists
         self.assertIn("desktop-widgets:begin", b); self.assertIn("SUPER + ALT + W", b); self.assertIn("SUPER + ALT + A", b)
         self.assertIn('"household.vault"', m)   # untouched
         json.loads(dw.strip_jsonc(m))            # still valid JSONC
@@ -277,9 +278,28 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("install", "--no-link")
         self.assertEqual(code, 0, err)
         m = menu.read_text(); b = binds.read_text()
-        self.assertIn('"widgets": {', m); self.assertIn('"widgets.editor"', m); self.assertNotIn("household.widgets", m)
+        self.assertIn('"style.widgets": {', m); self.assertIn('"style.widgets.editor"', m); self.assertNotIn("household.widgets", m)
         json.loads(dw.strip_jsonc(m))
         self.assertEqual(b.count("SUPER + ALT + W"), 1); self.assertIn("SUPER + ALT + A", b)
+
+    def test_install_menu_parent_override_and_hand_placed_rows(self):
+        menu, _ = self.seed_omarchy_files()
+        code, out, err = self.run_cli("install", "--no-link", "--no-keys", "--menu-parent", "household")
+        self.assertEqual(code, 0, err)
+        m = menu.read_text()
+        self.assertIn('"household.widgets": {', m); self.assertIn('"household.widgets.arrange"', m); self.assertNotIn("style.widgets", m)
+        json.loads(dw.strip_jsonc(m))
+        code, out, _ = self.run_cli("install", "--no-link", "--no-keys", "--menu-parent", "")
+        self.assertEqual(code, 0); self.assertIn("already", out)          # any *.widgets submenu counts as installed
+        self.assertEqual(menu.read_text(), m)
+        menu.write_text('{\n  "style.widgets": {"icon":"x","label":"Desktop widgets"}\n}\n')   # hand-placed, no markers
+        code, out, _ = self.run_cli("install", "--no-link", "--no-keys")
+        self.assertEqual(code, 0); self.assertIn("already", out)
+        menu.write_text('{\n  "learn": {"when":"false"}\n}\n')
+        code, out, err = self.run_cli("install", "--no-link", "--no-keys", "--menu-parent", "")
+        self.assertEqual(code, 0, err); m = menu.read_text()
+        self.assertIn('"widgets": {', m); self.assertIn('"widgets.editor"', m); self.assertNotIn('"style.widgets"', m)
+        json.loads(dw.strip_jsonc(m))
 
     def test_init_refuses_overwrite_without_force(self):
         code, out, err = self.run_cli("init")
