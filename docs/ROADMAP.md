@@ -209,7 +209,7 @@ honest), then the mirror and tag. About an evening on top of Phase 3.
 
 ## Backlog (Michael, 2026-09-10)
 
-1. **Layout presets and widget variants.** Two related ideas: (a) *whole-screen
+1. **Layout presets and widget variants.** **DONE 2026-09-10** (presets + stats `orientation`; plan `docs/superpowers/plans/2026-09-10-presets-and-variants.md`; clock/agents `layout` variants still open). Two related ideas: (a) *whole-screen
    templates* — a preset is a complete `widgets[]` layout (e.g. "minimal
    clock", "ops dashboard", "streamer") that you can apply in one go and save
    your current desktop as; `desktop-widgets preset list|apply <name>|save

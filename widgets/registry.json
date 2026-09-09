@@ -140,6 +140,17 @@
       "description": "CPU, memory, disk and battery as bars.",
       "fields": [
         {
+          "key": "orientation",
+          "type": "enum",
+          "label": "Layout",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal",
+          "description": "vertical stacks each bar under its label, for a narrow column"
+        },
+        {
           "key": "show",
           "type": "multi-enum",
           "label": "Rows",
