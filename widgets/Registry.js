@@ -6,7 +6,11 @@ function fieldsFor(type, registry) {
   if (!registry || !registry.types || !registry.types[type]) return []
   var t = registry.types[type]
   var omit = t.omitCommon || []
-  var common = (registry.common || []).filter(function(f) { return omit.indexOf(f.key) === -1 })
+  var over = t.defaults || {}
+  var common = (registry.common || []).filter(function(f) { return omit.indexOf(f.key) === -1 }).map(function(f) {
+    if (over[f.key] === undefined) return f
+    var c = {}; for (var k in f) c[k] = f[k]; c.default = over[f.key]; return c
+  })
   return common.concat(t.fields || [])
 }
 
@@ -68,6 +72,10 @@ function checkField(f, value, push) {
         if (!row || typeof row !== "object" || Array.isArray(row)) { push("error", f.key + "." + r + " must be an object"); continue }
         if ((f.options || []).indexOf(String(row.kind)) === -1) push("error", f.key + "." + r + " has unknown kind '" + row.kind + "'")
       }
+      break
+    case "apps":
+      if (!Array.isArray(value)) { push("error", f.key + " must be a list of desktop-entry ids"); return }
+      for (var a = 0; a < value.length; a++) if (typeof value[a] !== "string" || !value[a]) push("error", f.key + "." + a + " must be a desktop-entry id")
       break
     case "string": case "path": case "command": case "color":
       if (typeof value !== "string") push("error", f.key + " must be a string")

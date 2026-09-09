@@ -101,7 +101,9 @@ def fields_for(type_, registry):
     t = registry.get("types", {}).get(type_)
     if not t: return []
     omit = set(t.get("omitCommon", []))
-    return [f for f in registry.get("common", []) if f["key"] not in omit] + list(t.get("fields", []))
+    over = t.get("defaults", {}) or {}
+    common = [dict(f, default=over[f["key"]]) if f["key"] in over else f for f in registry.get("common", []) if f["key"] not in omit]
+    return common + list(t.get("fields", []))
 
 
 def apply_defaults(entry, registry):
@@ -138,6 +140,10 @@ def _check_field(f, value, push):
             push("error", f"{f['key']} must be a list"); return
         for v in value:
             if v not in f.get("options", []): push("error", f"{f['key']} has unknown option '{v}'")
+    elif t == "apps":
+        if not isinstance(value, list): push("error", f"{f['key']} must be a list of desktop-entry ids", f["key"]); return
+        for a, v in enumerate(value):
+            if not isinstance(v, str) or not v: push("error", f"{f['key']}.{a} must be a desktop-entry id", f["key"])
     elif t == "rows":
         if not isinstance(value, list):
             push("error", f"{f['key']} must be a list"); return
@@ -231,6 +237,7 @@ def summarize(entry, registry):
         "sysinfo": lambda e: f"{e.get('logo', 'omarchy')} {len(e.get('fields', []) or [1]*9)} rows",
         "monitor": lambda e: ",".join(e.get("rows", ["cpu", "mem", "net-down", "net-up"])) + f" {e.get('intervalSec', 10)}s/{e.get('windowSec', 300)}s",
         "weather": lambda e: f"{e.get('place', 'Tokyo, Japan')}" + (f" +effect/{e.get('effectPlacement', 'back')}" if e.get("effect") else ""),
+        "dock": lambda e: ",".join(e.get("apps", [])[:4]) + ("…" if len(e.get("apps", [])) > 4 else ""),
         "shape": lambda e: f"{e.get('kind', 'rect')} {e.get('width', 320)}×{e.get('height', 200)} {e.get('fill', 'background')}@{e.get('alpha', 0.4)}",
     }
     z = entry.get("z", 0)
@@ -271,7 +278,8 @@ def cmd_list(args, ctx):
         bad = any(m["level"] == "error" and m["widget"] == i for m in messages)
         state = "ERR" if bad else ("off" if e.get("enabled") is False else "on ")
         t = str(e.get("type", "?"))
-        print(f"{i:<2} {t:<8} {state} {str(e.get('corner', 'top-right')):<12} {e.get('x', 48):>4},{e.get('y', 48):<4} {summarize(e, ctx['registry'])}")
+        d = apply_defaults(e, ctx["registry"]) if not bad else e
+        print(f"{i:<2} {t:<8} {state} {str(d.get('corner', 'top-right')):<12} {d.get('x', 48):>4},{d.get('y', 48):<4} {summarize(e, ctx['registry'])}")
     return 0
 
 
@@ -351,7 +359,7 @@ def parse_value(field, text):
         if low in ("true", "yes", "1", "on"): return True
         if low in ("false", "no", "0", "off"): return False
         raise ValueError(f"{field['key']} must be true or false")
-    if t == "multi-enum":
+    if t in ("multi-enum", "apps"):
         return [s.strip() for s in text.split(",") if s.strip()]
     return text
 
@@ -582,6 +590,61 @@ def cmd_editor(args, ctx):
     """Toggle the editor panel inside the running shell."""
     rc = subprocess.call(["omarchy-shell", "shell", "toggle", PLUGIN_ID, "{}"])
     return 0 if rc == 0 else 2
+
+
+# ---------------------------------------------------------------- apps (desktop entries for the dock)
+def desktop_dirs():
+    home = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    dirs = [os.path.join(home, "applications")]
+    for d in (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":"):
+        if d: dirs.append(os.path.join(d, "applications"))
+    return dirs
+
+
+def read_hides():
+    out = set()
+    for p in ("/usr/share/omarchy/default/omarchy/launcher.hides", os.path.join(_config_base(), "omarchy", "launcher.hides")):
+        try:
+            with open(p) as fh: out.update(l.strip() for l in fh if l.strip() and not l.startswith("#"))
+        except OSError: pass
+    return out
+
+
+def list_apps(dirs=None, hides=None):
+    """id -> {name, icon, hidden}. First directory wins for duplicate ids (XDG precedence)."""
+    out = {}
+    hides = read_hides() if hides is None else hides
+    for d in dirs or desktop_dirs():
+        if not os.path.isdir(d): continue
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".desktop"): continue
+            did = fn[:-8]
+            if did in out: continue
+            name, icon, nodisplay, is_app = did, "", False, True
+            try:
+                with open(os.path.join(d, fn), errors="replace") as fh:
+                    section = ""
+                    for line in fh:
+                        line = line.strip()
+                        if line.startswith("["): section = line; continue
+                        if section != "[Desktop Entry]": continue
+                        if line.startswith("Name=") and name == did: name = line[5:]
+                        elif line.startswith("Icon="): icon = line[5:]
+                        elif line.startswith("NoDisplay=true"): nodisplay = True
+                        elif line.startswith("Type=") and line[5:] != "Application": is_app = False
+            except OSError: continue
+            if not is_app: continue
+            out[did] = {"name": name, "icon": icon, "hidden": nodisplay or did in hides}
+    return out
+
+
+def cmd_apps(args, ctx):
+    apps = list_apps()
+    if args.json: print(json.dumps({"apps": [dict(v, id=k) for k, v in apps.items() if args.all or not v["hidden"]]})); return 0
+    for k, v in sorted(apps.items(), key=lambda kv: kv[1]["name"].lower()):
+        if v["hidden"] and not args.all: continue
+        print(f"{k:<36} {v['name']}" + ("  (hidden)" if v["hidden"] else ""))
+    return 0
 
 
 # ---------------------------------------------------------------- grid
@@ -861,6 +924,7 @@ def build_parser():
     sub.add_parser("list", help="list widgets").set_defaults(fn=cmd_list)
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
+    ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
     gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
     pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")

@@ -11,6 +11,7 @@ Item {
   readonly property real scale_: Math.max(0.25, Number(config.scale || 1))
   readonly property real backdrop: Math.max(0, Math.min(1, Number(config.backdrop || 0)))
   property int pad: Math.round(Style.space(12) * scale_)   // widgets may override (shape uses 0)
+  property int topInset: 0   // transparent room above the card, inside the window (dock tooltips)
   readonly property string align: {
     var a = String(config.align || "auto")
     if (a === "left" || a === "right") return a
@@ -46,10 +47,11 @@ Item {
   readonly property real halo: config.halo === undefined ? 0.7 : Math.max(0, Math.min(1, Number(config.halo)))
 
   implicitWidth: inner.implicitWidth + 2 * pad
-  implicitHeight: inner.implicitHeight + 2 * pad
+  implicitHeight: inner.implicitHeight + 2 * pad + topInset
 
   Rectangle {
     anchors.fill: parent
+    anchors.topMargin: card.topInset
     visible: card.backdrop > 0
     radius: Style.cornerRadius
     color: Util.alpha(Color.popups.background, card.backdrop)
@@ -60,7 +62,7 @@ Item {
   Item {
     id: inner
     x: card.pad
-    y: card.pad
+    y: card.pad + card.topInset
     implicitWidth: childrenRect.width
     implicitHeight: childrenRect.height
   }

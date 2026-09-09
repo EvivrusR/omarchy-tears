@@ -83,3 +83,18 @@ test("needsRebuild only when existing windows' relative order changes or a new o
   assert.equal(R.needsRebuild([], ["a", "b"]), false);
   assert.equal(R.needsRebuild(["a"], []), false);
 });
+
+test("per-type defaults override common defaults (dock is bottom-center with a backdrop)", () => {
+  const e = R.applyDefaults({ type: "dock" }, registry);
+  assert.equal(e.corner, "bottom-center"); assert.equal(e.backdrop, 0.5); assert.equal(e.y, 8); assert.deepEqual(e.apps, []); assert.equal(e.iconStyle, "themed");
+  assert.equal(R.applyDefaults({ type: "clock" }, registry).corner, "top-right");
+  assert.equal(R.fieldsFor("dock", registry).find((f) => f.key === "corner").default, "bottom-center");
+  assert.equal(R.fieldsFor("clock", registry).find((f) => f.key === "corner").default, "top-right");
+});
+
+test("dock iconStyle is a bar-wide three-way enum", () => {
+  const f = R.fieldsFor("dock", registry).find((x) => x.key === "iconStyle");
+  assert.deepEqual(f.options, ["themed", "mono", "original"]); assert.equal(f.default, "themed");
+  const out = R.validateConfig({ widgets: [{ type: "dock", iconStyle: "rainbow" }] }, registry);
+  assert.equal(out.messages.filter((m) => m.level === "error").length, 1);
+});

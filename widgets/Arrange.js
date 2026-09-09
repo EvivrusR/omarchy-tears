@@ -1,9 +1,10 @@
 // Placement maths for arrange mode. Screen-space logical pixels; corners as
 // in the registry. Shared by the overlay (QML) and node tests.
 function rectFor(corner, x, y, w, h, sw, sh) {
-  var right = String(corner).indexOf("right") !== -1
-  var bottom = String(corner).indexOf("bottom") === 0
-  return { x: right ? sw - x - w : x, y: bottom ? sh - y - h : y, w: w, h: h }
+  var c = String(corner)
+  var right = c.indexOf("right") !== -1, center = c.indexOf("center") !== -1
+  var bottom = c.indexOf("bottom") === 0
+  return { x: center ? Math.round((sw - w) / 2) : right ? sw - x - w : x, y: bottom ? sh - y - h : y, w: w, h: h }
 }
 
 function placeFor(rect, sw, sh) {

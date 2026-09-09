@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Launcher dock**: `dock` widget (app icons from desktop entries, click to launch; hover zoom/tooltips or labels; bar-wide `iconStyle` themed / mono / original), `desktop-widgets apps`, editor app picker; registry types may declare `input: true` and per-type `defaults` for common keys; `top-center` / `bottom-center` corners.
 - **Weather**: `weather` widget (Open-Meteo, typed place, no location detection, cached, attribution) with an optional full-screen animated ASCII **weather effect** (`effect`, `effectPlacement` back/front/custom, opacity × preset, density, fps).
 - Stacking fix: a z change or a new window that belongs behind an old one now recreates the windows in order (the shell otherwise appends new windows on top).
 - Registry fields may declare `showWhen: {key: value}`; the editor's type header now lands correctly for types with `omitCommon`.

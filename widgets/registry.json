@@ -21,9 +21,12 @@
         "top-left",
         "top-right",
         "bottom-left",
-        "bottom-right"
+        "bottom-right",
+        "top-center",
+        "bottom-center"
       ],
-      "default": "top-right"
+      "default": "top-right",
+      "description": "*-center ignores x and centres the widget on that edge"
     },
     {
       "key": "x",
@@ -794,6 +797,70 @@
           "type": "color",
           "label": "Effect colour",
           "default": "foreground"
+        }
+      ]
+    },
+    "dock": {
+      "displayName": "Launcher dock",
+      "description": "A row of app icons that launch on click; lives on the wallpaper like every other widget (clickable where no window covers it).",
+      "input": true,
+      "defaults": {
+        "corner": "bottom-center",
+        "y": 8,
+        "backdrop": 0.5
+      },
+      "omitCommon": [
+        "align"
+      ],
+      "fields": [
+        {
+          "key": "apps",
+          "type": "apps",
+          "label": "Apps",
+          "default": [],
+          "description": "desktop-entry ids, in order (see `desktop-widgets apps`)"
+        },
+        {
+          "key": "iconStyle",
+          "type": "enum",
+          "label": "Icon style",
+          "options": [
+            "themed",
+            "mono",
+            "original"
+          ],
+          "default": "themed",
+          "description": "bar-wide: themed = tinted in the widget's text colour, mono = decolourised greys, original = the real icons"
+        },
+        {
+          "key": "iconSize",
+          "type": "integer",
+          "label": "Icon size (px)",
+          "default": 32,
+          "min": 16,
+          "max": 128
+        },
+        {
+          "key": "spacing",
+          "type": "integer",
+          "label": "Spacing (px)",
+          "default": 8,
+          "min": 0,
+          "max": 64
+        },
+        {
+          "key": "labels",
+          "type": "boolean",
+          "label": "Show names",
+          "default": false
+        },
+        {
+          "key": "hoverScale",
+          "type": "number",
+          "label": "Hover zoom",
+          "default": 1.2,
+          "min": 1,
+          "max": 2
         }
       ]
     }

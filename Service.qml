@@ -320,8 +320,11 @@ Item {
       readonly property string corner: String(override ? override.corner : (widget.corner || "top-right"))
       readonly property int offsetX: Number(override ? override.x : (widget.x !== undefined ? widget.x : 48))
       readonly property int offsetY: Number(override ? override.y : (widget.y !== undefined ? widget.y : 48))
-      // Never takes pointer input; arrange mode uses its own overlay window.
-      mask: Region {}
+      // No pointer input unless the registry type asks for it (`input: true`,
+      // the dock); arrange mode uses its own overlay window regardless.
+      readonly property bool wantsInput: !isEffect && !!(root.registry && root.registry.types && root.registry.types[String(widget.type)] && root.registry.types[String(widget.type)].input)
+      Region { id: noInput }
+      mask: wantsInput ? null : noInput
       function report() {
         if (isEffect || !visible || implicitWidth <= 1 || implicitHeight <= 1) return
         root.reportGeometry(modelData.key, widget.__index, modelData.screen.name,
@@ -344,6 +347,7 @@ Item {
       exclusionMode: ExclusionMode.Ignore
       visible: loader.status === Loader.Ready
 
+      // A *-center corner anchors neither side, which layer-shell centres.
       anchors {
         top: isEffect || corner.indexOf("top") === 0
         bottom: isEffect || corner.indexOf("bottom") === 0
@@ -376,6 +380,7 @@ Item {
             case "sysinfo": return "widgets/SysinfoWidget.qml"
             case "monitor": return "widgets/MonitorWidget.qml"
             case "weather": return "widgets/WeatherWidget.qml"
+            case "dock": return "widgets/DockWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""
