@@ -484,24 +484,63 @@
       "fields": [
         {
           "key": "logo",
-          "type": "string",
-          "label": "Logo",
+          "type": "enum",
+          "label": "Art",
+          "options": [
+            "omarchy",
+            "arch",
+            "arch_small",
+            "linux",
+            "debian",
+            "ubuntu",
+            "fedora",
+            "nixos",
+            "gentoo",
+            "void",
+            "endeavouros",
+            "manjaro",
+            "opensuse",
+            "alpine",
+            "cachyos",
+            "garuda",
+            "mint",
+            "popos",
+            "hyprland",
+            "none",
+            "custom"
+          ],
           "default": "omarchy",
-          "description": "a fastfetch builtin logo name (omarchy, arch, …) or none"
+          "description": "a common fastfetch logo, none, or custom (type any logo name or paste your own art)"
+        },
+        {
+          "key": "logoName",
+          "type": "string",
+          "label": "Logo name",
+          "default": "",
+          "description": "any name from `fastfetch --list-logos`",
+          "showWhen": {
+            "logo": "custom"
+          }
         },
         {
           "key": "art",
-          "type": "string",
+          "type": "text",
           "label": "Custom art",
           "default": "",
-          "description": "your own ASCII art (lines separated by \\n); replaces the logo"
+          "description": "paste ASCII art here (replaces the logo name); monospace, lines kept as typed",
+          "showWhen": {
+            "logo": "custom"
+          }
         },
         {
           "key": "artFile",
           "type": "path",
           "label": "Art file",
           "default": "",
-          "description": "read the art from this text file instead"
+          "description": "or read the art from this text file",
+          "showWhen": {
+            "logo": "custom"
+          }
         },
         {
           "key": "logoPosition",

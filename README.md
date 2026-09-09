@@ -97,9 +97,11 @@ Per type:
 - **battery**: glyph (`style`: `outline` icon-font battery, `pixel` `[████░]`, or `text`), percent, and time to
   empty or full from the battery's own power draw (`showPercent`, `showTime`, `warnAt` 20 turns it red,
   `intervalSec` 30). Hidden when the machine has no battery.
-- **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo`
-  (any fastfetch builtin name, default `omarchy`, `none` hides), `art` (your own lines, `\n`-separated) or
-  `artFile` (a text file) replace the logo; `logoPosition` (`left`/`above`), `logoColor` (`accent`), `fields`
+- **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo` is a
+  dropdown of common fastfetch logos (`omarchy` default, `arch`, `linux`, `debian`, `ubuntu`, `fedora`, `nixos`, …),
+  `none`, or `custom`, which reveals `logoName` (any name from `fastfetch --list-logos`), `art` (paste your own
+  ASCII art in the editor's multi-line box; from the CLI `--set art="line1\nline2"`) and `artFile` (a text file);
+  pasted art wins over the file, which wins over the name. `logoPosition` (`left`/`above`), `logoColor` (`accent`), `fields`
   (any of os, host, kernel, uptime, packages, shell, wm, cpu, gpu, memory, disk, ip, battery), `title`
   (user@host + rule), `swatches` (theme colour row), `intervalSec` 60. Needs `fastfetch` on PATH (Omarchy ships it).
 - **monitor**: stats over time. `rows` (any of cpu, mem, gpu, temp, load, net-down, net-up), polled every

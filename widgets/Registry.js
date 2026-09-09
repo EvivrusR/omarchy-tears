@@ -77,7 +77,7 @@ function checkField(f, value, push) {
       if (!Array.isArray(value)) { push("error", f.key + " must be a list of desktop-entry ids"); return }
       for (var a = 0; a < value.length; a++) if (typeof value[a] !== "string" || !value[a]) push("error", f.key + "." + a + " must be a desktop-entry id")
       break
-    case "string": case "path": case "command": case "color":
+    case "string": case "path": case "command": case "color": case "text":
       if (typeof value !== "string") push("error", f.key + " must be a string")
       break
     default:

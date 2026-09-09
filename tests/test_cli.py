@@ -224,6 +224,13 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
 
+    def test_sysinfo_custom_art_from_cli(self):
+        code, out, err = self.run_cli("add", "sysinfo", "--set", "logo=custom", "--set", "art=/\\_/\\\\n( o.o )")
+        self.assertEqual(code, 0, err)
+        e = json.loads(self.cfg.read_text())["widgets"][-1]
+        self.assertEqual(e["art"], "/\\_/\\\n( o.o )"); self.assertEqual(e["logo"], "custom")
+        self.assertEqual(self.run_cli("set", "2", "logo=archlinux")[0], 1)
+
     def test_apps_listing_and_dock(self):
         data = self.home / ".local" / "share" / "applications"; data.mkdir(parents=True)
         (data / "Alacritty.desktop").write_text("[Desktop Entry]\nType=Application\nName=Alacritty\nIcon=Alacritty\n")

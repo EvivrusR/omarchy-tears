@@ -28,7 +28,7 @@ RowLayout {
 
   Loader {
     id: control
-    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps"
+    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps" || root.kind === "text"
     Layout.fillWidth: wide
     Layout.alignment: Qt.AlignVCenter
     sourceComponent: {
@@ -39,6 +39,7 @@ RowLayout {
         case "enum": return root.field.key === "corner" ? cornerComp : enumComp
         case "multi-enum": return multiComp
         case "apps": return appsComp
+        case "text": return multilineComp
         case "rows": return rowsComp
         default: return textComp
       }
@@ -97,6 +98,35 @@ RowLayout {
       values: Array.isArray(root.value) ? root.value : []
       options: (root.field.options || []).map(function(o) { return { value: o, label: o } })
       onChanged: function(vals) { root.edited(root.field.key, vals) }
+    }
+  }
+
+  // text: a multi-line, monospace box (ASCII art); commits when focus leaves.
+  Component {
+    id: multilineComp
+    Rectangle {
+      implicitHeight: Math.max(Style.space(120), edit.contentHeight + Style.spacing.inputPaddingY * 2 + Style.space(8))
+      radius: Style.cornerRadius > 0 ? Style.cornerRadius / 2 : 0
+      color: Util.alpha(Color.popups.background, 0.6)
+      border.width: 1; border.color: edit.activeFocus ? Color.accent : Util.alpha(Color.popups.text, 0.3)
+      Flickable {
+        anchors.fill: parent; anchors.margins: Style.spacing.inputPaddingY
+        contentWidth: width; contentHeight: edit.contentHeight
+        clip: true; boundsBehavior: Flickable.StopAtBounds
+        TextEdit {
+          id: edit
+          width: parent.width
+          text: String(root.value === undefined ? "" : root.value)
+          color: Color.popups.text; selectionColor: Util.alpha(Color.accent, 0.5)
+          font.family: "monospace"; font.pixelSize: Style.font.body
+          wrapMode: TextEdit.NoWrap
+          selectByMouse: true
+          property string committed: text
+          onActiveFocusChanged: if (!activeFocus && text !== committed) { committed = text; root.edited(root.field.key, text) }
+          Keys.onEscapePressed: function(e) { focus = false; e.accepted = true }
+        }
+      }
+      Text { visible: edit.text === ""; anchors.left: parent.left; anchors.top: parent.top; anchors.margins: Style.spacing.inputPaddingY; text: "paste ASCII art…"; color: Color.muted; font.family: "monospace"; font.pixelSize: Style.font.body }
     }
   }
 

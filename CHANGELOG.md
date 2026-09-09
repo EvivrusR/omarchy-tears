@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- sysinfo: `logo` is now a dropdown of common fastfetch logos + `none` + `custom`; custom reveals `logoName`, a multi-line `art` box (new `text` field type) and `artFile`. **Migration:** `"logo": "<other name>"` becomes `"logo": "custom", "logoName": "<name>"`. Shell name no longer reports the sampler script.
 - Editor: explicit save confirmation (status line + *Saved ✓* button) and a **Save & close** button (Ctrl+Shift+S); IPC op `saveClose`.
 
 ## 0.5.0 — 2026-09-10

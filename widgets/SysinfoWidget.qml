@@ -5,9 +5,11 @@ import qs.Commons
 // fastfetch-style block: logo / your own ASCII art beside a key: value table.
 WidgetCard {
   id: root
-  readonly property string logo: String(config.logo === undefined ? "omarchy" : config.logo)
-  readonly property string customArt: String(config.art || "")
-  readonly property string artFile: String(config.artFile || "")
+  readonly property string logoChoice: String(config.logo === undefined ? "omarchy" : config.logo)
+  readonly property bool custom: logoChoice === "custom"
+  readonly property string customArt: custom ? String(config.art || "") : ""
+  readonly property string artFile: custom ? String(config.artFile || "") : ""
+  readonly property string logo: custom ? (String(config.logoName || "").trim() || "none") : logoChoice
   readonly property bool above: String(config.logoPosition || "left") === "above"
   readonly property color logoColor: resolveColor(config.logoColor || "accent", Color.accent)
   readonly property var fields: listOf(config.fields) || ["os", "kernel", "uptime", "packages", "shell", "wm", "cpu", "memory", "disk"]
