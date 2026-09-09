@@ -21,9 +21,12 @@
         "top-left",
         "top-right",
         "bottom-left",
-        "bottom-right"
+        "bottom-right",
+        "top-center",
+        "bottom-center"
       ],
-      "default": "top-right"
+      "default": "top-right",
+      "description": "*-center ignores x and centres the widget on that edge"
     },
     {
       "key": "x",
@@ -40,6 +43,15 @@
       "default": 48,
       "min": 0,
       "max": 8000
+    },
+    {
+      "key": "z",
+      "type": "integer",
+      "label": "Stacking (z)",
+      "default": 0,
+      "min": -100,
+      "max": 100,
+      "description": "Lower sits further back; equal z keeps list order"
     },
     {
       "key": "scale",
@@ -130,6 +142,17 @@
       "displayName": "System stats",
       "description": "CPU, memory, disk and battery as bars.",
       "fields": [
+        {
+          "key": "orientation",
+          "type": "enum",
+          "label": "Layout",
+          "options": [
+            "horizontal",
+            "vertical"
+          ],
+          "default": "horizontal",
+          "description": "vertical stacks each bar under its label, for a narrow column"
+        },
         {
           "key": "show",
           "type": "multi-enum",
@@ -305,6 +328,539 @@
             "spacer"
           ],
           "description": "Each row: kind + its keys; text/label/value take {placeholders}"
+        }
+      ]
+    },
+    "shape": {
+      "displayName": "Shape",
+      "description": "Pure form: a translucent panel, divider, pill or circle to lay behind other widgets.",
+      "omitCommon": [
+        "color",
+        "mutedColor",
+        "outline",
+        "halo",
+        "align",
+        "backdrop"
+      ],
+      "fields": [
+        {
+          "key": "kind",
+          "type": "enum",
+          "label": "Kind",
+          "options": [
+            "rect",
+            "pill",
+            "circle",
+            "line"
+          ],
+          "default": "rect"
+        },
+        {
+          "key": "width",
+          "type": "integer",
+          "label": "Width (px)",
+          "default": 320,
+          "min": 1,
+          "max": 8000,
+          "description": "Circle: diameter; line: length. Multiplied by scale"
+        },
+        {
+          "key": "height",
+          "type": "integer",
+          "label": "Height (px)",
+          "default": 200,
+          "min": 1,
+          "max": 8000,
+          "description": "Line: thickness; ignored by circle"
+        },
+        {
+          "key": "fill",
+          "type": "color",
+          "label": "Fill",
+          "default": "background",
+          "description": "Theme token or any colour"
+        },
+        {
+          "key": "alpha",
+          "type": "number",
+          "label": "Fill alpha",
+          "default": 0.4,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "border",
+          "type": "color",
+          "label": "Border colour",
+          "default": "accent"
+        },
+        {
+          "key": "borderWidth",
+          "type": "integer",
+          "label": "Border width (px)",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "description": "0 = no border"
+        },
+        {
+          "key": "borderAlpha",
+          "type": "number",
+          "label": "Border alpha",
+          "default": 1,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "radius",
+          "type": "integer",
+          "label": "Corner radius (px)",
+          "default": 12,
+          "min": 0,
+          "max": 500,
+          "description": "rect and line; pill and circle are always round"
+        },
+        {
+          "key": "shadow",
+          "type": "number",
+          "label": "Shadow",
+          "default": 0,
+          "min": 0,
+          "max": 1,
+          "description": "Soft dark shadow strength; 0 = none"
+        }
+      ]
+    },
+    "battery": {
+      "displayName": "Battery",
+      "description": "Charge glyph, percent and time to empty or full; hidden when there is no battery.",
+      "fields": [
+        {
+          "key": "style",
+          "type": "enum",
+          "label": "Glyph",
+          "options": [
+            "outline",
+            "pixel",
+            "text"
+          ],
+          "default": "outline",
+          "description": "outline = icon-font battery, pixel = [████░] segments, text = percent only"
+        },
+        {
+          "key": "showPercent",
+          "type": "boolean",
+          "label": "Show percent",
+          "default": true
+        },
+        {
+          "key": "showTime",
+          "type": "boolean",
+          "label": "Show time left",
+          "default": true,
+          "description": "time to empty (discharging) or to full (charging)"
+        },
+        {
+          "key": "warnAt",
+          "type": "integer",
+          "label": "Warn below (%)",
+          "default": 20,
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 30,
+          "min": 5,
+          "max": 3600
+        }
+      ]
+    },
+    "sysinfo": {
+      "displayName": "System info",
+      "description": "fastfetch-style block: logo or your own ASCII art beside a key/value table.",
+      "fields": [
+        {
+          "key": "logo",
+          "type": "string",
+          "label": "Logo",
+          "default": "omarchy",
+          "description": "a fastfetch builtin logo name (omarchy, arch, …) or none"
+        },
+        {
+          "key": "art",
+          "type": "string",
+          "label": "Custom art",
+          "default": "",
+          "description": "your own ASCII art (lines separated by \\n); replaces the logo"
+        },
+        {
+          "key": "artFile",
+          "type": "path",
+          "label": "Art file",
+          "default": "",
+          "description": "read the art from this text file instead"
+        },
+        {
+          "key": "logoPosition",
+          "type": "enum",
+          "label": "Art position",
+          "options": [
+            "left",
+            "above"
+          ],
+          "default": "left"
+        },
+        {
+          "key": "logoColor",
+          "type": "color",
+          "label": "Art colour",
+          "default": "accent"
+        },
+        {
+          "key": "fields",
+          "type": "multi-enum",
+          "label": "Rows",
+          "options": [
+            "os",
+            "host",
+            "kernel",
+            "uptime",
+            "packages",
+            "shell",
+            "wm",
+            "cpu",
+            "gpu",
+            "memory",
+            "disk",
+            "ip",
+            "battery"
+          ],
+          "default": [
+            "os",
+            "kernel",
+            "uptime",
+            "packages",
+            "shell",
+            "wm",
+            "cpu",
+            "memory",
+            "disk"
+          ]
+        },
+        {
+          "key": "title",
+          "type": "boolean",
+          "label": "user@host title",
+          "default": true
+        },
+        {
+          "key": "swatches",
+          "type": "boolean",
+          "label": "Colour swatch row",
+          "default": true
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 60,
+          "min": 10,
+          "max": 86400
+        }
+      ]
+    },
+    "monitor": {
+      "displayName": "Monitor",
+      "description": "CPU, memory, GPU, temperature, load and network over time, as sparklines.",
+      "fields": [
+        {
+          "key": "rows",
+          "type": "multi-enum",
+          "label": "Rows",
+          "options": [
+            "cpu",
+            "mem",
+            "gpu",
+            "temp",
+            "load",
+            "net-down",
+            "net-up"
+          ],
+          "default": [
+            "cpu",
+            "mem",
+            "net-down",
+            "net-up"
+          ]
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Poll every (s)",
+          "default": 10,
+          "min": 2,
+          "max": 600
+        },
+        {
+          "key": "windowSec",
+          "type": "integer",
+          "label": "Show last (s)",
+          "default": 300,
+          "min": 30,
+          "max": 3600
+        },
+        {
+          "key": "graph",
+          "type": "enum",
+          "label": "Graph",
+          "options": [
+            "sparkline",
+            "bars",
+            "none"
+          ],
+          "default": "sparkline"
+        },
+        {
+          "key": "graphHeight",
+          "type": "integer",
+          "label": "Graph height (px)",
+          "default": 28,
+          "min": 8,
+          "max": 200
+        },
+        {
+          "key": "graphWidth",
+          "type": "integer",
+          "label": "Graph width (px)",
+          "default": 200,
+          "min": 40,
+          "max": 1200
+        },
+        {
+          "key": "iface",
+          "type": "string",
+          "label": "Network interface",
+          "default": "",
+          "description": "empty = the default route's interface"
+        },
+        {
+          "key": "title",
+          "type": "string",
+          "label": "Title",
+          "default": ""
+        },
+        {
+          "key": "downColor",
+          "type": "color",
+          "label": "Download colour",
+          "default": "accent"
+        },
+        {
+          "key": "upColor",
+          "type": "color",
+          "label": "Upload colour",
+          "default": "urgent"
+        }
+      ]
+    },
+    "weather": {
+      "displayName": "Weather",
+      "description": "Current conditions and the next hours for a place you type (Open-Meteo, no location detection), with an optional animated ASCII weather effect across the wallpaper.",
+      "omitCommon": [
+        "z"
+      ],
+      "fields": [
+        {
+          "key": "place",
+          "type": "string",
+          "label": "Place",
+          "default": "Tokyo, Japan",
+          "description": "\"City, Country\" — resolved once through Open-Meteo's geocoder and cached"
+        },
+        {
+          "key": "units",
+          "type": "enum",
+          "label": "Units",
+          "options": [
+            "metric",
+            "imperial"
+          ],
+          "default": "metric"
+        },
+        {
+          "key": "refreshMin",
+          "type": "integer",
+          "label": "Refresh (min)",
+          "default": 15,
+          "min": 5,
+          "max": 180
+        },
+        {
+          "key": "layout",
+          "type": "enum",
+          "label": "Layout",
+          "options": [
+            "stacked",
+            "inline"
+          ],
+          "default": "stacked"
+        },
+        {
+          "key": "show",
+          "type": "multi-enum",
+          "label": "Show",
+          "options": [
+            "place",
+            "feels",
+            "humidity",
+            "wind",
+            "hours",
+            "attribution"
+          ],
+          "default": [
+            "place",
+            "feels",
+            "humidity",
+            "wind",
+            "hours",
+            "attribution"
+          ]
+        },
+        {
+          "key": "hours",
+          "type": "integer",
+          "label": "Hours ahead",
+          "default": 6,
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "effect",
+          "type": "boolean",
+          "label": "Weather effect",
+          "default": false,
+          "description": "animated ASCII rain / snow / clouds / fog / stars across the whole screen"
+        },
+        {
+          "key": "effectPlacement",
+          "type": "enum",
+          "label": "Effect placement",
+          "options": [
+            "back",
+            "front",
+            "custom"
+          ],
+          "default": "back",
+          "description": "back = behind every widget, front = above them all, custom = use z below"
+        },
+        {
+          "key": "z",
+          "type": "integer",
+          "label": "Effect stacking (z)",
+          "default": 0,
+          "min": -100,
+          "max": 100,
+          "showWhen": {
+            "effectPlacement": "custom"
+          }
+        },
+        {
+          "key": "effectOpacity",
+          "type": "number",
+          "label": "Effect opacity",
+          "default": 0.4,
+          "min": 0,
+          "max": 1,
+          "description": "multiplied by each effect's own preset opacity"
+        },
+        {
+          "key": "effectDensity",
+          "type": "number",
+          "label": "Effect density",
+          "default": 1,
+          "min": 0.2,
+          "max": 3
+        },
+        {
+          "key": "effectFps",
+          "type": "integer",
+          "label": "Effect frame rate",
+          "default": 6,
+          "min": 2,
+          "max": 12
+        },
+        {
+          "key": "effectColor",
+          "type": "color",
+          "label": "Effect colour",
+          "default": "foreground"
+        }
+      ]
+    },
+    "dock": {
+      "displayName": "Launcher dock",
+      "description": "A row of app icons that launch on click; lives on the wallpaper like every other widget (clickable where no window covers it).",
+      "input": true,
+      "defaults": {
+        "corner": "bottom-center",
+        "y": 8,
+        "backdrop": 0.5
+      },
+      "omitCommon": [
+        "align"
+      ],
+      "fields": [
+        {
+          "key": "apps",
+          "type": "apps",
+          "label": "Apps",
+          "default": [],
+          "description": "desktop-entry ids, in order (see `desktop-widgets apps`)"
+        },
+        {
+          "key": "iconStyle",
+          "type": "enum",
+          "label": "Icon style",
+          "options": [
+            "themed",
+            "mono",
+            "original"
+          ],
+          "default": "themed",
+          "description": "bar-wide: themed = tinted in the widget's text colour, mono = decolourised greys, original = the real icons"
+        },
+        {
+          "key": "iconSize",
+          "type": "integer",
+          "label": "Icon size (px)",
+          "default": 32,
+          "min": 16,
+          "max": 128
+        },
+        {
+          "key": "spacing",
+          "type": "integer",
+          "label": "Spacing (px)",
+          "default": 8,
+          "min": 0,
+          "max": 64
+        },
+        {
+          "key": "labels",
+          "type": "boolean",
+          "label": "Show names",
+          "default": false
+        },
+        {
+          "key": "hoverScale",
+          "type": "number",
+          "label": "Hover zoom",
+          "default": 1.2,
+          "min": 1,
+          "max": 2
         }
       ]
     }

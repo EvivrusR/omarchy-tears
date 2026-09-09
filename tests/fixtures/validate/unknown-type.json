@@ -1,5 +1,5 @@
 {
-  "config": [ { "type": "clock" }, { "type": "weather" }, { "corner": "top-left" } ],
+  "config": [ { "type": "clock" }, { "type": "nope" }, { "corner": "top-left" } ],
   "expect": { "widgets": 3, "errors": 2, "warnings": 0,
-    "messages": [ "widget 1: unknown type 'weather'", "widget 2: missing type" ] }
+    "messages": [ "widget 1: unknown type 'nope'", "widget 2: missing type" ] }
 }

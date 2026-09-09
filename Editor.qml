@@ -47,6 +47,7 @@ Item {
   }
   function open(payloadJson) {
     loadFromService()
+    refreshPresets()
     applyOnChange = !(service && service.configHasComments)
     statusText = service && service.configHasComments ? "file has comments — saving from here drops them" : ""
     opened = true
@@ -72,6 +73,38 @@ Item {
   function setField(key, value) { if (!selectedEntry) return; Model.setValue(doc[selected], key, value, registry); touch() }
   function revert() { loadFromService(); statusText = "reverted to the saved file" }
   function initExample() { if (!initProc.running) { statusText = "writing the example layout…"; initProc.running = true } }
+
+  // ---- presets: listed by the CLI on open, applied through the CLI (one writer); the panel then follows the file.
+  property var presets: []
+  function refreshPresets() { if (!presetList.running) presetList.running = true }
+  function applyPreset(name) {
+    if (!name || presetApply.running) return
+    if (dirty) { statusText = "save or revert first, then apply a preset"; return }
+    presetApply.presetName = String(name)
+    statusText = "applying preset " + name + "…"
+    presetApply.running = true
+  }
+  Process {
+    id: presetList
+    command: [root.cliPath, "preset", "list", "--json"]
+    stdout: StdioCollector { id: presetOut }
+    onExited: function(code) {
+      var list = []
+      try { list = JSON.parse(String(presetOut.text || "{}")).presets || [] } catch (e) {}
+      root.presets = list
+    }
+  }
+  Process {
+    id: presetApply
+    property string presetName: ""
+    command: [root.cliPath, "preset", "apply", presetName]
+    stderr: StdioCollector { id: presetErr }
+    onExited: function(code) {
+      root.statusText = code === 0 ? "applied preset " + presetApply.presetName + " (previous layout in desktop-widgets.json.bak)"
+                                   : "ERROR " + String(presetErr.text || "").trim().split("\n")[0]
+      if (code === 0) Qt.callLater(root.loadFromService)
+    }
+  }
   Process {
     id: initProc
     command: [root.cliPath, "init", "--force"]
@@ -79,7 +112,7 @@ Item {
   }
 
   // `omarchy-shell shell call homelab.desktop-widgets call '{"op":"add","type":"clock"}'`
-  // ops: select{index} add{type} remove duplicate move{dir} set{key,value} toggleEnabled{index} save revert applyOnChange{value} state
+  // ops: select{index} add{type} remove duplicate move{dir} set{key,value} toggleEnabled{index} save revert applyOnChange{value} preset{name} presets state
   function call(arg) {
     var c
     try { c = JSON.parse(String(arg || "{}")) } catch (e) { return "bad json" }
@@ -96,7 +129,10 @@ Item {
       case "applyOnChange": applyOnChange = c.value === true; return "ok"
       case "arrange": if (!service) return "no service"; service.setArranging(c.value !== false); dismiss(); return "ok"
       case "init": initExample(); return "ok"
-      case "state": return JSON.stringify({ selected: selected, dirty: dirty, saving: saving, status: statusText, count: doc.length, applyOnChange: applyOnChange })
+      case "preset": applyPreset(String(c.name || "")); return "ok"
+      case "presets": return JSON.stringify(presets.map(function(p) { return p.name }))
+      case "grid": if (!service) return "no service"; service.setGrid(c.enabled !== false, c.size || service.grid.size); return "ok"
+      case "state": return JSON.stringify({ selected: selected, dirty: dirty, saving: saving, status: statusText, count: doc.length, applyOnChange: applyOnChange, presets: presets.length })
       default: return "unknown op"
     }
   }
@@ -182,6 +218,15 @@ Item {
             Button { visible: !root.service; text: "Enable plugin"; bordered: true; onClicked: Quickshell.execDetached(["omarchy", "plugin", "enable", "homelab.desktop-widgets"]) }
             Item { Layout.fillWidth: true }
             Button { text: "Arrange on desktop"; iconText: "󰆾"; bordered: true; tooltipText: "Drag widgets into place; Esc finishes"; enabled: !!root.service; onClicked: { root.service.setArranging(true); root.dismiss() } }
+            Button {
+              readonly property var g: root.service ? root.service.grid : { enabled: false, size: 24 }
+              text: "Grid " + (g.enabled ? g.size + "px" : "off"); iconText: "󰝘"; bordered: true; selected: g.enabled
+              tooltipText: "Snap dragged widgets to a grid (click: on/off · right-click: bigger · middle: smaller). `desktop-widgets grid <px>` sets any size"
+              enabled: !!root.service
+              onClicked: root.service.setGrid(!g.enabled, g.size)
+              MouseArea { anchors.fill: parent; acceptedButtons: Qt.RightButton | Qt.MiddleButton
+                onClicked: function(m) { var g = root.service.grid; root.service.setGrid(true, m.button === Qt.RightButton ? Math.min(256, g.size * 2) : Math.max(4, g.size / 2)) } }
+            }
             Text { text: "j/k select · ctrl+s save · esc closes"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
           }
 
@@ -216,6 +261,7 @@ Item {
                       MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: root.toggleEnabled(index) }
                     }
                     Text { text: Model.entryLabel(modelData, root.registry); color: index === root.selected ? Color.menu.selectedText : Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.body; Layout.fillWidth: true; elide: Text.ElideRight }
+                    Text { visible: Number(modelData.z || 0) !== 0; text: "z " + Number(modelData.z || 0); color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
                     Text { text: String(modelData.corner || "top-right"); color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
                     Text { visible: Model.firstError(root.messages, index) !== ""; text: "⚠"; color: Color.urgent; font.pixelSize: Style.font.body }
                   }
@@ -246,6 +292,27 @@ Item {
                   spacing: Style.spacing.sm
                   Button { text: "Duplicate"; bordered: true; enabled: !!root.selectedEntry; onClicked: root.duplicateSelected() }
                   Button { text: "Remove"; bordered: true; enabled: !!root.selectedEntry; onClicked: root.removeSelected() }
+                }
+                RowLayout {
+                  spacing: Style.spacing.sm
+                  Dropdown {
+                    id: presetPick
+                    showLabel: false
+                    implicitWidth: Style.space(150)
+                    enabled: !root.dirty && !presetApply.running
+                    value: ""
+                    options: {
+                      var o = [{ value: "", label: root.dirty ? "Presets (save first)" : "Presets…" }]
+                      for (var i = 0; i < root.presets.length; i++) {
+                        var p = root.presets[i]
+                        if (p.valid === false) continue
+                        o.push({ value: p.name, label: p.name + " · " + p.widgets + (p.origin === "user" ? " · yours" : "") })
+                      }
+                      return o
+                    }
+                    onChanged: function(v) { if (v) { root.applyPreset(v); presetPick.value = "" } }
+                  }
+                  Text { text: "replaces the layout; `desktop-widgets preset save <name>` keeps yours"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                 }
               }
             }

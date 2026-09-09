@@ -1,7 +1,13 @@
 // Pure helpers for the editor panel. Node-tested; imported by Editor.qml.
 function fieldsFor(type, registry) {
   if (!registry || !registry.types || !registry.types[type]) return []
-  return (registry.common || []).concat(registry.types[type].fields || [])
+  var t = registry.types[type]
+  var omit = t.omitCommon || []
+  var over = t.defaults || {}
+  return (registry.common || []).filter(function(f) { return omit.indexOf(f.key) === -1 }).map(function(f) {
+    if (over[f.key] === undefined) return f
+    var c = {}; for (var k in f) c[k] = f[k]; c.default = over[f.key]; return c
+  }).concat(t.fields || [])
 }
 
 function fieldDef(entry, key, registry) {
@@ -13,7 +19,9 @@ function fieldDef(entry, key, registry) {
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
 
 function newEntry(type, registry, corner) {
-  return { type: type, corner: corner || "top-right" }
+  var t = registry && registry.types ? registry.types[type] : null
+  var d = t && t.defaults && t.defaults.corner ? t.defaults.corner : "top-right"
+  return { type: type, corner: corner || d }
 }
 
 // Writes value into entry[key]; drops the key when it equals the registry default.

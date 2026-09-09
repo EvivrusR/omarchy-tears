@@ -66,9 +66,10 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, or any drop-in |
-| `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right` |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, `dock`, or any drop-in |
+| `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right`, `top-center`, `bottom-center` (centre ignores `x`) |
 | `x`, `y` | 48 | offset from that corner, px |
+| `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
 | `enabled` | true | `false` hides the widget without deleting it |
 | `screen` | all | output name (`hyprctl monitors`) to draw on |
 | `scale` | 1 | font and spacing multiplier |
@@ -82,7 +83,8 @@ Keys every widget accepts:
 Per type:
 
 - **clock**: `timeFormat` (`HH:mm`), `dateFormat` (`dddd d MMMM`, empty string hides it). Qt date format strings.
-- **stats**: `show` (any of `cpu`, `mem`, `disk`, `battery`), `intervalSec` (3), `diskPath` (`/`).
+- **stats**: `show` (any of `cpu`, `mem`, `disk`, `battery`), `intervalSec` (3), `diskPath` (`/`),
+  `orientation` (`horizontal`; `vertical` stacks each bar under its label for a narrow column).
   Battery only appears when a `/sys/class/power_supply/BAT*` exists.
 - **command**: `command` (run with `bash -lc`), `intervalSec` (60), `timeoutSec` (10), `maxLines` (8),
   `maxWidth` (420 px), `title`. A non-zero exit keeps the last good output and shows a red `!` by the title.
@@ -92,6 +94,49 @@ Per type:
   `~/.local/state/omarchy/agents/usage/<agent>.json`, which the bar widget refreshes every 15 minutes.
   If you disable the bar widget, set `refreshIntervalSec` (e.g. 900) so this widget triggers
   `omarchy-agent-usage-update --limits-only` itself.
+- **battery**: glyph (`style`: `outline` icon-font battery, `pixel` `[████░]`, or `text`), percent, and time to
+  empty or full from the battery's own power draw (`showPercent`, `showTime`, `warnAt` 20 turns it red,
+  `intervalSec` 30). Hidden when the machine has no battery.
+- **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo`
+  (any fastfetch builtin name, default `omarchy`, `none` hides), `art` (your own lines, `\n`-separated) or
+  `artFile` (a text file) replace the logo; `logoPosition` (`left`/`above`), `logoColor` (`accent`), `fields`
+  (any of os, host, kernel, uptime, packages, shell, wm, cpu, gpu, memory, disk, ip, battery), `title`
+  (user@host + rule), `swatches` (theme colour row), `intervalSec` 60. Needs `fastfetch` on PATH (Omarchy ships it).
+- **monitor**: stats over time. `rows` (any of cpu, mem, gpu, temp, load, net-down, net-up), polled every
+  `intervalSec` (10) and kept for `windowSec` (300), drawn as `graph`: `sparkline` (filled, right edge = now),
+  `bars`, or `none`; `graphWidth` 200 / `graphHeight` 28 px; `iface` (empty = default route); `title`;
+  `downColor` (`accent`) / `upColor` (`urgent`). GPU is best effort: NVIDIA via `nvidia-smi`, AMD via sysfs,
+  otherwise `n/a`. The `ops` preset shows all three of these together.
+- **weather**: current conditions and the next hours for a place you type — `place` (`Tokyo, Japan`;
+  "City, Country", resolved once through Open-Meteo's free geocoder and cached; **never** your IP or
+  location), `units` (`metric`/`imperial`), `refreshMin` 15, `layout` (`stacked`/`inline`), `show` (place,
+  feels, humidity, wind, hours, attribution), `hours` 6. Weather data by Open-Meteo.com (CC BY 4.0); the
+  attribution row is on by default. Offline, the last forecast is shown and marked.
+  **Effect**: `effect: true` adds a second, full-screen window with animated ASCII weather — stars or a
+  sun when clear, drifting clouds, fog, drizzle, rain (slanted when windy), swaying snow, and storm flashes.
+  `effectPlacement`: `back` (default, behind every widget), `front` (above them all), or `custom` (uses the
+  widget's `z`, shown in the editor only then; the effect sits just above its own widget at equal z).
+  `effectOpacity` 0.4 (multiplied by each effect's own preset opacity, so rain is never a wall), `effectDensity` 1,
+  `effectFps` 6, `effectColor` (`foreground`). The animation timer only runs while something moves.
+- **dock**: a row of app icons that launch on click — the one widget that takes pointer input. It lives on the
+  wallpaper like everything else, so it is clickable wherever no window covers it and never reserves space.
+  `apps` (desktop-entry ids in order; `desktop-widgets apps` lists them, the editor has a searchable picker fed by
+  the same entries as Omarchy's Apps menu), `iconStyle`, bar-wide (`themed` tints every icon in the widget's text colour so
+  any icon set matches the theme; `mono` decolourises them to greys; `original` keeps the real icons), `iconSize` 32, `spacing` 8, `labels` (names
+  under icons; otherwise a hover tooltip), `hoverScale` 1.2. Defaults to `bottom-center`, `y: 8`, `backdrop: 0.5`.
+  Launches through `uwsm-app -- gtk-launch <id>.desktop`, the way Omarchy's menu does.
+- **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
+  widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
+  in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
+  `fill` (`background`) + `alpha` (0.4), `border` (`accent`) + `borderWidth` (0 = none) + `borderAlpha` (1),
+  `radius` (12, rect/line only), `shadow` (0..1, soft dark drop shadow; when on, the widget's box grows by
+  24·scale px on every side so the shadow has room, and `x`/`y` place that box). Text keys (`color`,
+  `outline`, `halo`, `align`, `backdrop`) do not apply and warn if set. Shapes never take input.
+
+  ```json
+  { "type": "shape", "corner": "top-left", "x": 24, "y": 36, "z": -1,
+    "width": 320, "height": 232, "fill": "background", "alpha": 0.45, "borderWidth": 1, "borderAlpha": 0.5 }
+  ```
 
 ## Editor panel
 
@@ -113,7 +158,7 @@ omarchy-shell shell toggle homelab.desktop-widgets '{}'  # what that runs
 - Scriptable: `omarchy-shell shell call homelab.desktop-widgets call '{"op":"add","type":"clock"}'`
   (ops: `select{index}`, `add{type}`, `remove`, `duplicate`, `move{dir}`, `set{key,value}`, `toggleEnabled{index}`, `save`, `revert`, `applyOnChange{value}`, `state`).
 
-Menu: *Desktop widgets* › **Editor** (under Household if you have that submenu). `desktop-widgets install` adds the SUPER+ALT+W / SUPER+ALT+A binds; SUPER+SHIFT+W is Omawrite on a stock Omarchy, which is why ALT.
+Menu: Style › *Desktop widgets* › **Editor** (`desktop-widgets install --menu-parent <id>` puts the rows under another submenu, `''` for top level). `desktop-widgets install` adds the SUPER+ALT+W / SUPER+ALT+A binds; SUPER+SHIFT+W is Omawrite on a stock Omarchy, which is why ALT.
 
 ## Arrange mode (drag-to-place)
 
@@ -139,6 +184,40 @@ section of `~/.config/omarchy/shell.json` (hot-reloads); leave it out if you
 don't want it. Omarchy 4.0.3's `omarchy plugin enable … right` / `omarchy bar put`
 do not place it because the plugin is already listed under `plugins[]` for its
 service — a known quirk of mixed-kind plugins.
+
+### Grid snapping
+
+Off by default. `desktop-widgets grid on|off|<px>` (4..256, default 24) or the **Grid**
+button in the editor (click toggles, right-click doubles, middle-click halves). While
+arrange mode is armed, `G` toggles it and `[` / `]` resize it; the grid shows as dots.
+Snapping applies to the offsets from the chosen corner, so `x: 48` stays 48 on a
+24-grid and existing layouts never drift. Stored at the top of the config:
+
+```json
+{ "version": 1, "grid": { "enabled": true, "size": 24 }, "widgets": [ … ] }
+```
+
+Top-level keys other than `widgets` are settings; every writer (CLI, editor, presets)
+carries them over, and presets never contain them.
+
+## Presets (whole-screen layouts)
+
+A preset is a complete `widgets[]` layout you apply in one go. Four ship with the
+plugin — `minimal` (one big clock), `dashboard` (the example layout on a panel),
+`column` (a narrow left column: panel, small clock, vertical stats, Claude session) and
+`ops` (system-info block on a panel, monitor sparklines, battery, clock) —
+and you keep your own under `~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`
+(same format as the config, plus an optional `"description"`; a preset of yours with
+a shipped name wins).
+
+```bash
+desktop-widgets preset save mine            # keep what's on screen now
+desktop-widgets preset apply column         # try another layout (previous one is in .bak)
+desktop-widgets preset apply mine           # and back
+```
+
+The editor has a **Presets…** dropdown (disabled while you have unsaved edits); it
+applies through the same CLI path and the panel follows the file.
 
 ## Template widgets (no code)
 
@@ -241,6 +320,11 @@ desktop-widgets status
 | `move <index> [--corner C] [--x N] [--y N]` | reposition |
 | `enable <index>` / `disable <index>` | keep the widget in the file but hide it |
 | `remove <index>` / `duplicate <index>` | delete, or copy into the next slot |
+| `apps [--json] [--all]` | desktop entries a dock can show (id + name) |
+| `grid [on\|off\|toggle\|<px>]` | show or set arrange-mode grid snapping |
+| `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
+| `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |
+| `preset save <name> [--force] [--description …]` / `remove <name>` | keep the current layout as a preset of yours / delete one of yours |
 | `edit` | open in `$VISUAL`/`$EDITOR`, validate on save, keep `.bak`; comments survive |
 | `status [--enabled]` | plugin enabled?, config health, windows on screen, last log lines; `--enabled` is a plain exit code for scripts |
 | `toggle` | `omarchy plugin enable`/`disable` the plugin |
@@ -258,21 +342,25 @@ would produce an invalid config is refused with the reasons.
 
 ## Omarchy menu
 
-Rows for the Omarchy menu (`~/.config/omarchy/extensions/omarchy-menu.jsonc`, hot-reloads).
-Absolute paths via `$HOME` because the shell's environment need not include `~/.local/bin`.
+`desktop-widgets install` writes these rows under Omarchy's own **Style** submenu
+(`~/.config/omarchy/extensions/omarchy-menu.jsonc`, hot-reloads) — Style exists on
+every install, so nothing needs to be created first. Absolute paths via `$HOME`
+because the shell's environment need not include `~/.local/bin`.
 
 ```jsonc
-"household.widgets":         {"icon":"󱂬","label":"Desktop widgets","aliases":["widgets"],"description":"Wallpaper-layer widgets"},
-"household.widgets.editor":  {"icon":"󰏫","label":"Editor","action":"omarchy-shell shell toggle homelab.desktop-widgets '{}'"},
-"household.widgets.edit":    {"icon":"","label":"Edit config","action":"omarchy-launch-terminal $HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets edit"},
-"household.widgets.status":  {"icon":"󰋼","label":"Status","action":"omarchy-launch-floating-terminal-with-presentation \"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status; read -n1 -s -r -p 'press any key'\""},
-"household.widgets.enabled": {"icon":"󰔡","label":"Enabled","checked":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status --enabled","action":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets toggle"},
-"household.widgets.restart": {"icon":"","label":"Restart shell","action":"omarchy-restart-shell"},
+"style.widgets":         {"icon":"󱂬","label":"Desktop widgets","aliases":["widgets"],"description":"Wallpaper-layer widgets"},
+"style.widgets.editor":  {"icon":"󰏫","label":"Editor","action":"omarchy-shell shell toggle homelab.desktop-widgets '{}'"},
+"style.widgets.edit":    {"icon":"","label":"Edit config","action":"omarchy-launch-terminal $HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets edit"},
+"style.widgets.status":  {"icon":"󰋼","label":"Status","action":"omarchy-launch-floating-terminal-with-presentation \"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status; read -n1 -s -r -p 'press any key'\""},
+"style.widgets.enabled": {"icon":"󰔡","label":"Enabled","checked":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets status --enabled","action":"$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets toggle"},
+"style.widgets.restart": {"icon":"","label":"Restart shell","action":"omarchy-restart-shell"},
 ```
 
-Replace `household` with whichever submenu you keep such rows in.
+`--menu-parent household` (or any submenu id, `''` for top level) puts them elsewhere; an existing `*.widgets` submenu is left alone.
 
 ## Developing
+
+Work happens on branches (`feat/<name>`), merged to `master` when ready; `master` is what `omarchy plugin update` pulls, so it must always run. Push both remotes: `git push origin <branch> && git push github <branch>`.
 
 Code lives in the plugin directory as a git checkout. Config changes hot-reload.
 **Code** changes need `omarchy restart shell`: the shell's plugin reload only

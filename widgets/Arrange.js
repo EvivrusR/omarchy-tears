@@ -1,9 +1,10 @@
 // Placement maths for arrange mode. Screen-space logical pixels; corners as
 // in the registry. Shared by the overlay (QML) and node tests.
 function rectFor(corner, x, y, w, h, sw, sh) {
-  var right = String(corner).indexOf("right") !== -1
-  var bottom = String(corner).indexOf("bottom") === 0
-  return { x: right ? sw - x - w : x, y: bottom ? sh - y - h : y, w: w, h: h }
+  var c = String(corner)
+  var right = c.indexOf("right") !== -1, center = c.indexOf("center") !== -1
+  var bottom = c.indexOf("bottom") === 0
+  return { x: center ? Math.round((sw - w) / 2) : right ? sw - x - w : x, y: bottom ? sh - y - h : y, w: w, h: h }
 }
 
 function placeFor(rect, sw, sh) {
@@ -21,4 +22,12 @@ function moveRect(rect, dx, dy, sw, sh) {
   return { x: x, y: y, w: rect.w, h: rect.h }
 }
 
-if (typeof module !== "undefined") module.exports = { rectFor, placeFor, moveRect }
+// Grid snapping applies to the offsets from the chosen corner, so a widget at
+// x: 48 stays at 48 on a 24-grid and layouts never drift. size <= 0 = off.
+function snapPlace(place, size) {
+  var g = Number(size) || 0
+  if (g <= 0) return place
+  return { corner: place.corner, x: Math.max(0, Math.round(place.x / g) * g), y: Math.max(0, Math.round(place.y / g) * g) }
+}
+
+if (typeof module !== "undefined") module.exports = { rectFor, placeFor, moveRect, snapPlace }

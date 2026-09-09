@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""fastfetch → flat JSON for the sysinfo widget, plus the logo lines.
+  dw-sysinfo [--logo omarchy|arch|none|<fastfetch logo name>]
+Output: {"user":..,"host":..,"os":..,"kernel":..,"uptime":..,"packages":..,"shell":..,"wm":..,
+         "cpu":..,"gpu":..,"memory":..,"disk":..,"ip":..,"battery":..,"logo":[lines]}
+Missing values are "" so the widget can skip them. Standard library only."""
+import json, os, shutil, socket, subprocess, sys
+
+STRUCTURE = "OS:Host:Kernel:Uptime:Packages:Shell:WM:CPU:GPU:Memory:Disk:LocalIP:Battery"
+
+
+def human(n):
+    n = float(n or 0)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if n < 1024 or unit == "TiB": return f"{n:.0f} {unit}" if unit in ("B", "KiB") else f"{n:.1f} {unit}"
+        n /= 1024
+
+
+def fmt_uptime(millis):
+    s = int(millis or 0) // 1000   # fastfetch reports milliseconds
+    d, s = divmod(s, 86400); h, s = divmod(s, 3600); m = s // 60
+    return (f"{d}d " if d else "") + (f"{h}h " if h or d else "") + f"{m}m"
+
+
+def flatten(modules):
+    """modules: fastfetch --format json list. Pure; tested."""
+    out = {}
+    for m in modules:
+        t, r = m.get("type"), m.get("result")
+        if r is None: continue
+        try:
+            if t == "OS": out["os"] = (r.get("prettyName") or r.get("name") or "") + (f" {r['version']}" if r.get("version") else "")
+            elif t == "Host": out["host"] = r.get("name") or r.get("family") or ""
+            elif t == "Kernel": out["kernel"] = f"{r.get('name', '')} {r.get('release', '')}".strip()
+            elif t == "Uptime": out["uptime"] = fmt_uptime(r.get("uptime"))
+            elif t == "Packages": out["packages"] = str(r.get("all", "")) + (f" ({', '.join(k for k in r if k != 'all' and r[k])})" if isinstance(r, dict) else "")
+            elif t == "Shell": out["shell"] = (r.get("prettyName") or r.get("exeName") or "") + (f" {r['version']}" if r.get("version") else "")
+            elif t == "WM": out["wm"] = (r.get("prettyName") or r.get("processName") or "") + (f" {r['version']}" if r.get("version") else "") + (f" ({r['protocolName']})" if r.get("protocolName") else "")
+            elif t == "CPU":
+                cores = (r.get("cores") or {}).get("logical")
+                out["cpu"] = (r.get("cpu") or "").replace("(R)", "").replace("(TM)", "").strip() + (f" ({cores})" if cores else "")
+            elif t == "GPU":
+                names = [g.get("name") or "" for g in (r if isinstance(r, list) else [r]) if g.get("name")]
+                out["gpu"] = ", ".join(names)
+            elif t == "Memory":
+                tot, used = r.get("total") or 0, r.get("used") or 0
+                out["memory"] = f"{human(used)} / {human(tot)}" + (f" ({100 * used / tot:.0f}%)" if tot else "")
+            elif t == "Disk":
+                disks = r if isinstance(r, list) else [r]
+                root = next((d for d in disks if d.get("mountpoint") == "/"), disks[0] if disks else None)
+                if root:
+                    b = root.get("bytes") or {}; tot, used = b.get("total") or 0, b.get("used") or 0
+                    out["disk"] = f"{human(used)} / {human(tot)}" + (f" ({100 * used / tot:.0f}%)" if tot else "")
+            elif t == "LocalIp":
+                ips = r if isinstance(r, list) else [r]
+                pick = next((i for i in ips if (i.get("defaultRoute") or {}).get("ipv4")), ips[0] if ips else None)
+                out["ip"] = (pick.get("ipv4") or "").split("/")[0] if pick else ""
+            elif t == "Battery":
+                bats = r if isinstance(r, list) else [r]
+                if bats:
+                    b = bats[0]; cap = b.get("capacity"); st = b.get("status") or ""
+                    out["battery"] = (f"{cap:.0f}%" if cap is not None else "") + (f" [{st}]" if st else "")
+        except Exception:
+            continue
+    return out
+
+
+def logo_lines(name):
+    if not name or name == "none" or not shutil.which("fastfetch"): return []
+    try:
+        r = subprocess.run(["fastfetch", "--logo", name, "--structure", "none", "--pipe"], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError): return []
+    lines = [l.rstrip() for l in r.stdout.splitlines()]
+    while lines and not lines[0].strip(): lines.pop(0)
+    while lines and not lines[-1].strip(): lines.pop()
+    return lines
+
+
+def main(argv):
+    logo = argv[argv.index("--logo") + 1] if "--logo" in argv else "omarchy"
+    out = {"user": os.environ.get("USER") or "", "host": socket.gethostname()}
+    if shutil.which("fastfetch"):
+        try:
+            r = subprocess.run(["fastfetch", "--structure", STRUCTURE, "--format", "json"], capture_output=True, text=True, timeout=5)
+            out.update(flatten(json.loads(r.stdout)))
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError): pass
+    out.setdefault("host", socket.gethostname())
+    out["logo"] = logo_lines(logo)
+    print(json.dumps(out)); return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

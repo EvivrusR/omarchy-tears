@@ -46,3 +46,55 @@ test("hasErrors is per widget index", () => {
   assert.equal(R.hasErrors(msgs, 1), true);
   assert.equal(R.hasErrors(msgs, 0), false);
 });
+
+test("shape type omits text-only common fields and has its own defaults", () => {
+  const keys = R.fieldsFor("shape", registry).map((x) => x.key);
+  assert.ok(keys.includes("corner") && keys.includes("z") && keys.includes("kind") && keys.includes("fill"));
+  for (const k of ["color", "mutedColor", "outline", "halo", "align", "backdrop"]) assert.ok(!keys.includes(k), k + " should be omitted");
+  const e = R.applyDefaults({ type: "shape" }, registry);
+  assert.equal(e.kind, "rect"); assert.equal(e.fill, "background"); assert.equal(e.alpha, 0.4); assert.equal(e.z, 0);
+  assert.equal(e.color, undefined);
+  assert.equal(R.applyDefaults({ type: "clock" }, registry).z, 0);
+});
+
+test("stackOrder sorts by z then keeps list order", () => {
+  const list = [{ type: "clock", z: 2 }, { type: "shape", z: -1 }, { type: "stats" }, { type: "shape", z: -1 }, { type: "agents", z: 0 }];
+  assert.deepEqual(R.stackOrder(list), [1, 3, 2, 4, 0]);
+  assert.deepEqual(R.stackOrder([{ type: "a" }, { type: "b" }]), [0, 1]);
+  assert.deepEqual(R.stackOrder([]), []);
+});
+
+test("settingsOf keeps top-level keys other than version/widgets, and gridOf normalises", () => {
+  assert.deepEqual(R.settingsOf({ version: 1, widgets: [], grid: { enabled: true, size: 32 }, later: 1 }), { grid: { enabled: true, size: 32 }, later: 1 });
+  assert.deepEqual(R.settingsOf([{ type: "clock" }]), {});
+  assert.deepEqual(R.gridOf({ grid: { enabled: true, size: 32 } }), { enabled: true, size: 32 });
+  assert.deepEqual(R.gridOf({}), { enabled: false, size: 24 });
+  assert.deepEqual(R.gridOf({ grid: { enabled: "yes", size: 2 } }), { enabled: false, size: 4 });
+  assert.deepEqual(R.gridOf({ grid: { enabled: true, size: 9999 } }), { enabled: true, size: 256 });
+});
+
+test("needsRebuild only when existing windows' relative order changes or a new one belongs before an old one", () => {
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "b", "c"]), false);
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "c"]), false);              // removal keeps order
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "b", "c", "d"]), false);    // appended at the top
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["d", "a", "b", "c"]), true);     // new one must go to the back
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "d", "b", "c"]), true);
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["b", "a", "c"]), true);          // z edit swapped two
+  assert.equal(R.needsRebuild([], ["a", "b"]), false);
+  assert.equal(R.needsRebuild(["a"], []), false);
+});
+
+test("per-type defaults override common defaults (dock is bottom-center with a backdrop)", () => {
+  const e = R.applyDefaults({ type: "dock" }, registry);
+  assert.equal(e.corner, "bottom-center"); assert.equal(e.backdrop, 0.5); assert.equal(e.y, 8); assert.deepEqual(e.apps, []); assert.equal(e.iconStyle, "themed");
+  assert.equal(R.applyDefaults({ type: "clock" }, registry).corner, "top-right");
+  assert.equal(R.fieldsFor("dock", registry).find((f) => f.key === "corner").default, "bottom-center");
+  assert.equal(R.fieldsFor("clock", registry).find((f) => f.key === "corner").default, "top-right");
+});
+
+test("dock iconStyle is a bar-wide three-way enum", () => {
+  const f = R.fieldsFor("dock", registry).find((x) => x.key === "iconStyle");
+  assert.deepEqual(f.options, ["themed", "mono", "original"]); assert.equal(f.default, "themed");
+  const out = R.validateConfig({ widgets: [{ type: "dock", iconStyle: "rainbow" }] }, registry);
+  assert.equal(out.messages.filter((m) => m.level === "error").length, 1);
+});

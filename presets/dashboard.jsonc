@@ -1,28 +1,17 @@
 {
-  // Desktop widgets — copy to ~/.config/omarchy/desktop-widgets.json and prune.
-  // Comments and trailing commas are fine. `desktop-widgets types <type>` lists every key.
+  // The example layout with a translucent panel behind the stats block.
   "version": 1,
+  "description": "Clock, stats on a panel, uptime, load, Claude session",
   "widgets": [
-    // Big clock, top-right. Text gets a black outline + halo by default so it reads on any wallpaper.
     { "type": "clock", "corner": "top-right", "x": 48, "y": 64,
       "timeFormat": "HH:mm", "dateFormat": "dddd d MMMM" },
-
-    // A translucent panel *behind* the stats block ("z": -1 puts it further back).
     { "type": "shape", "corner": "bottom-left", "x": 24, "y": 24, "z": -1,
       "kind": "rect", "width": 300, "height": 150, "fill": "background", "alpha": 0.4, "borderWidth": 1, "borderAlpha": 0.5 },
-
-    // CPU / memory / disk / battery bars.
     { "type": "stats", "corner": "bottom-left", "x": 48, "y": 48,
       "show": ["cpu", "mem", "disk", "battery"], "intervalSec": 3 },
-
-    // Any command's output. Non-zero exit keeps the last good text and marks a red "!".
     { "type": "command", "corner": "bottom-right", "x": 48, "y": 48,
       "title": "UPTIME", "command": "uptime -p", "intervalSec": 60, "maxLines": 4 },
-
-    // Current Claude session: % used, meter, "ends in 3h 27m · 22:59".
     { "type": "agents", "corner": "top-left", "x": 48, "y": 64, "agent": "claude" },
-
-    // Template: any command that prints JSON, rendered as rows with {placeholders}.
     { "type": "template", "corner": "bottom-right", "x": 48, "y": 140, "intervalSec": 10,
       "command": "python3 -c 'import json,os; l=os.getloadavg(); print(json.dumps({\"l1\":l[0],\"l5\":l[1],\"cpus\":os.cpu_count()}))'",
       "rows": [

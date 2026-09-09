@@ -1,0 +1,16 @@
+{
+  // Ops dashboard: fetch block top-left on a panel, monitor graphs bottom-left, battery + clock right.
+  "version": 1,
+  "description": "Ops: system info block, monitor sparklines, battery, clock",
+  "widgets": [
+    { "type": "shape", "corner": "top-left", "x": 24, "y": 40, "z": -1,
+      "kind": "rect", "width": 560, "height": 300, "fill": "background", "alpha": 0.4, "radius": 16, "borderWidth": 1, "borderAlpha": 0.4 },
+    { "type": "sysinfo", "corner": "top-left", "x": 48, "y": 60, "logo": "omarchy",
+      "fields": ["os", "kernel", "uptime", "packages", "shell", "wm", "cpu", "memory", "disk", "ip"] },
+    { "type": "monitor", "corner": "bottom-left", "x": 48, "y": 48, "title": "MONITOR",
+      "rows": ["cpu", "mem", "temp", "net-down", "net-up"], "intervalSec": 10, "windowSec": 300 },
+    { "type": "clock", "corner": "top-right", "x": 48, "y": 64, "timeFormat": "HH:mm", "dateFormat": "dddd d MMMM" },
+    { "type": "battery", "corner": "top-right", "x": 48, "y": 200, "style": "outline" },
+    { "type": "agents", "corner": "bottom-right", "x": 48, "y": 48, "agent": "claude" },
+  ],
+}

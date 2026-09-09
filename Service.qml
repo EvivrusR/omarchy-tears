@@ -26,6 +26,16 @@ Item {
   // file carries comments a JSON rewrite would drop.
   property var rawWidgets: []
   property var messages: []
+  // Top-level settings (everything but version/widgets), carried over by saveDoc.
+  property var settings: ({})
+  readonly property var grid: Registry.gridOf({ grid: settings.grid })
+  function setGrid(enabled, size) {
+    var g = Registry.gridOf({ grid: { enabled: enabled, size: size } })
+    var next = ({})
+    for (var k in settings) next[k] = settings[k]
+    next.grid = g
+    saveDoc(JSON.parse(JSON.stringify(rawWidgets)), null, next)
+  }
   property bool configHasComments: false
   property bool configParseFailed: false
 
@@ -74,10 +84,15 @@ Item {
 
   // Save a whole document through the CLI (validated, .bak kept). onDone(ok, message).
   property var saveCallback: null
-  function saveDoc(doc, onDone) {
+  function saveDoc(doc, onDone, withSettings) {
     if (writer.running) { log("saveDoc: writer busy, dropped"); if (onDone) onDone(false, "busy"); return }
     saveCallback = onDone || null
-    writer.pendingText = JSON.stringify({ version: 1, widgets: doc }, null, 2) + "\n"
+    var out = ({})
+    var st = withSettings || settings
+    for (var k in st) out[k] = st[k]
+    out.version = 1
+    out.widgets = doc
+    writer.pendingText = JSON.stringify(out, null, 2) + "\n"
     writer.running = true
   }
   Process {
@@ -110,7 +125,9 @@ Item {
     var place = Arrange.placeFor(rect, screen.width, screen.height)
     return commitPlace(key, index, place)
   }
+  function snap(place) { return grid.enabled ? Arrange.snapPlace(place, grid.size) : place }
   function commitPlace(key, index, place) {
+    place = snap(place)
     setOverride(key, place)
     var doc = JSON.parse(JSON.stringify(rawWidgets))
     if (!doc[index]) return "no widget " + index
@@ -128,7 +145,15 @@ Item {
     }
     function drag(index: string, dx: string, dy: string): string { return root.drag(Number(index), Number(dx), Number(dy)) }
     function rescan(): string { root.loadRegistry(); return "ok" }
-    function state(): string { return JSON.stringify({ arranging: root.arranging, widgets: root.widgets.length, geometries: Object.keys(root.geometries).length, overrides: Object.keys(root.overrides).length }) }
+    // grid on|off|toggle|<px>; anything else just reports.
+    function grid(value: string): string {
+      var v = String(value || "").trim().toLowerCase()
+      var g = root.grid
+      if (v === "on" || v === "off" || v === "toggle") root.setGrid(v === "on" ? true : v === "off" ? false : !g.enabled, g.size)
+      else if (v && !isNaN(Number(v))) root.setGrid(true, Number(v))
+      return JSON.stringify(root.grid)
+    }
+    function state(): string { return JSON.stringify({ arranging: root.arranging, widgets: root.widgets.length, geometries: Object.keys(root.geometries).length, overrides: Object.keys(root.overrides).length, grid: root.grid }) }
   }
 
   // Last good layout. A malformed edit keeps the previous one on screen.
@@ -167,6 +192,7 @@ Item {
       return
     }
     configParseFailed = false
+    settings = Registry.settingsOf(parsed)
     var result = Registry.validateConfig(parsed, registry)
     rawWidgets = result.widgets ? JSON.parse(JSON.stringify(result.widgets)) : []
     messages = result.messages
@@ -185,6 +211,12 @@ Item {
     }
     widgets = next
     everLoaded = true
+    // Stacking is creation order and Variants reuses windows, so when the
+    // ordered key list changes in a way appending cannot express, bump `gen`
+    // (part of every placement) to recreate all windows in the right order.
+    var keys = orderedKeys(next)
+    if (Registry.needsRebuild(lastKeys, keys)) { gen += 1; log("stacking changed, rebuilding windows") }
+    lastKeys = keys
     log("loaded " + next.length + " widget(s)" + (next.length !== result.widgets.length ? " (" + (result.widgets.length - next.length) + " skipped)" : ""))
   }
 
@@ -240,17 +272,39 @@ Item {
     }
   }
 
-  // Pairs every widget with every screen it targets.
-  readonly property var placements: {
+  // Pairs every widget with every screen it targets, in stacking order.
+  // Creation order is stacking order (compositor stacks same-layer surfaces
+  // by creation), so walk the widgets by ascending z. A weather widget with
+  // its effect on gets a second, full-screen window; back/front pin it
+  // below/above everything, custom uses the widget's z.
+  property int gen: 0
+  property var lastKeys: []
+  function orderedPlacements(list) {
     var out = []
     var screens = Quickshell.screens
-    for (var i = 0; i < widgets.length; i++) {
-      var w = widgets[i]
-      for (var s = 0; s < screens.length; s++) {
-        if (w.screen && String(w.screen) !== screens[s].name) continue
-        out.push({ widget: w, screen: screens[s], key: w.__index + "@" + screens[s].name })
+    var items = []
+    for (var i = 0; i < list.length; i++) {
+      var wi = list[i]
+      items.push({ w: wi, z: Number(wi.z) || 0, effect: false })
+      if (String(wi.type) === "weather" && wi.effect === true) {
+        var pl = String(wi.effectPlacement || "back")
+        items.push({ w: wi, z: pl === "back" ? -1e9 : pl === "front" ? 1e9 : (Number(wi.z) || 0), effect: true })
       }
     }
+    var order = Registry.stackOrder(items)
+    for (var o = 0; o < order.length; o++) {
+      var it = items[order[o]], w = it.w
+      for (var s = 0; s < screens.length; s++) {
+        if (w.screen && String(w.screen) !== screens[s].name) continue
+        out.push({ widget: w, screen: screens[s], effect: it.effect, key: w.__index + "@" + screens[s].name + (it.effect ? "#effect" : "") })
+      }
+    }
+    return out
+  }
+  function orderedKeys(list) { return orderedPlacements(list).map(function(p) { return p.key }) }
+  readonly property var placements: {
+    var out = orderedPlacements(widgets)
+    for (var i = 0; i < out.length; i++) out[i].gen = gen
     return out
   }
 
@@ -261,14 +315,18 @@ Item {
       id: win
       required property var modelData
       readonly property var widget: modelData.widget
+      readonly property bool isEffect: modelData.effect === true
       readonly property var override: root.overrides[modelData.key] || null
       readonly property string corner: String(override ? override.corner : (widget.corner || "top-right"))
       readonly property int offsetX: Number(override ? override.x : (widget.x !== undefined ? widget.x : 48))
       readonly property int offsetY: Number(override ? override.y : (widget.y !== undefined ? widget.y : 48))
-      // Never takes pointer input; arrange mode uses its own overlay window.
-      mask: Region {}
+      // No pointer input unless the registry type asks for it (`input: true`,
+      // the dock); arrange mode uses its own overlay window regardless.
+      readonly property bool wantsInput: !isEffect && !!(root.registry && root.registry.types && root.registry.types[String(widget.type)] && root.registry.types[String(widget.type)].input)
+      Region { id: noInput }
+      mask: wantsInput ? null : noInput
       function report() {
-        if (!visible || implicitWidth <= 1 || implicitHeight <= 1) return
+        if (isEffect || !visible || implicitWidth <= 1 || implicitHeight <= 1) return
         root.reportGeometry(modelData.key, widget.__index, modelData.screen.name,
           Arrange.rectFor(corner, offsetX, offsetY, implicitWidth, implicitHeight, modelData.screen.width, modelData.screen.height))
       }
@@ -289,31 +347,40 @@ Item {
       exclusionMode: ExclusionMode.Ignore
       visible: loader.status === Loader.Ready
 
+      // A *-center corner anchors neither side, which layer-shell centres.
       anchors {
-        top: corner.indexOf("top") === 0
-        bottom: corner.indexOf("bottom") === 0
-        left: corner.indexOf("left") !== -1
-        right: corner.indexOf("right") !== -1
+        top: isEffect || corner.indexOf("top") === 0
+        bottom: isEffect || corner.indexOf("bottom") === 0
+        left: isEffect || corner.indexOf("left") !== -1
+        right: isEffect || corner.indexOf("right") !== -1
       }
       margins {
-        top: anchors.top ? offsetY : 0
-        bottom: anchors.bottom ? offsetY : 0
-        left: anchors.left ? offsetX : 0
-        right: anchors.right ? offsetX : 0
+        top: !isEffect && anchors.top ? offsetY : 0
+        bottom: !isEffect && anchors.bottom ? offsetY : 0
+        left: !isEffect && anchors.left ? offsetX : 0
+        right: !isEffect && anchors.right ? offsetX : 0
       }
 
-      implicitWidth: Math.max(1, Math.ceil(loader.implicitWidth))
-      implicitHeight: Math.max(1, Math.ceil(loader.implicitHeight))
+      implicitWidth: isEffect ? modelData.screen.width : Math.max(1, Math.ceil(loader.implicitWidth))
+      implicitHeight: isEffect ? modelData.screen.height : Math.max(1, Math.ceil(loader.implicitHeight))
 
       Loader {
         id: loader
+        anchors.fill: win.isEffect ? parent : undefined
         source: {
+          if (win.isEffect) return "widgets/WeatherEffect.qml"
           switch (String(win.widget.type)) {
             case "clock": return "widgets/ClockWidget.qml"
             case "stats": return "widgets/StatsWidget.qml"
             case "command": return "widgets/CommandWidget.qml"
             case "agents": return "widgets/AgentsWidget.qml"
             case "template": return "widgets/TemplateWidget.qml"
+            case "shape": return "widgets/ShapeWidget.qml"
+            case "battery": return "widgets/BatteryWidget.qml"
+            case "sysinfo": return "widgets/SysinfoWidget.qml"
+            case "monitor": return "widgets/MonitorWidget.qml"
+            case "weather": return "widgets/WeatherWidget.qml"
+            case "dock": return "widgets/DockWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""

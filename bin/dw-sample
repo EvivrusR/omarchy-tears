@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""One-shot system sample for the desktop widgets (battery, monitor).
+Prints one JSON object. Every section is best-effort: a failure yields null for
+that section, never a non-zero exit. Python 3 standard library only.
+
+  {"t": 1757000000.0,
+   "cpu": {"pct": 12.3, "cores": 8}, "mem": {"pct": 21.6, "used": 3491971072, "total": 16137748480},
+   "load": [0.4, 0.5, 0.6], "temp": {"c": 63.0, "source": "coretemp"},
+   "net": {"iface": "wlp0s20f3", "rx": 123, "tx": 456},          # raw counters; the widget computes rates
+   "battery": {"pct": 38, "status": "Charging", "watts": 12.3, "hours": 1.5} | null,
+   "gpu": {"pct": 55, "mem_used": 1234, "mem_total": 8192, "source": "nvidia"} | null}
+"""
+import glob, json, os, subprocess, sys, time
+
+# ---------------------------------------------------------------- pure parsers (tested)
+def cpu_times(stat_line):
+    f = stat_line.split()
+    if not f or f[0] != "cpu": return None
+    nums = [int(x) for x in f[1:]]
+    idle = nums[3] + (nums[4] if len(nums) > 4 else 0)
+    return {"idle": idle, "total": sum(nums)}
+
+
+def cpu_percent(a, b):
+    if not a or not b: return None
+    dt, di = b["total"] - a["total"], b["idle"] - a["idle"]
+    if dt <= 0: return None
+    return round(max(0.0, min(100.0, 100.0 * (dt - di) / dt)), 1)
+
+
+def mem_info(text):
+    kv = {}
+    for line in text.splitlines():
+        k, _, v = line.partition(":")
+        v = v.strip().split()
+        if v and v[0].isdigit(): kv[k] = int(v[0]) * 1024
+    total, avail = kv.get("MemTotal"), kv.get("MemAvailable")
+    if not total or avail is None: return None
+    return {"pct": round(100.0 * (total - avail) / total, 1), "used": total - avail, "total": total}
+
+
+def net_counters(text, iface):
+    for line in text.splitlines():
+        if ":" not in line: continue
+        name, _, rest = line.partition(":")
+        if name.strip() != iface: continue
+        f = rest.split()
+        if len(f) >= 9: return {"iface": iface, "rx": int(f[0]), "tx": int(f[8])}
+    return None
+
+
+def default_iface(route_text):
+    for line in route_text.splitlines():
+        f = line.split()
+        if f[:1] == ["default"] and "dev" in f: return f[f.index("dev") + 1]
+    return None
+
+
+def battery_from(values):
+    """values: dict of sysfs file name -> text (capacity, status, current_now, voltage_now,
+    charge_now, charge_full, power_now, energy_now, energy_full)."""
+    def num(k):
+        try: return float(values[k].strip())
+        except (KeyError, ValueError, AttributeError): return None
+    pct = num("capacity")
+    if pct is None: return None
+    status = (values.get("status") or "").strip() or "Unknown"
+    watts = None
+    if num("power_now") is not None: watts = num("power_now") / 1e6
+    elif num("current_now") is not None and num("voltage_now") is not None: watts = num("current_now") * num("voltage_now") / 1e12
+    hours = None
+    if watts and watts > 0.05:
+        if num("energy_now") is not None and num("energy_full") is not None:
+            now, full = num("energy_now") / 1e6, num("energy_full") / 1e6
+        elif num("charge_now") is not None and num("charge_full") is not None and num("voltage_now") is not None:
+            v = num("voltage_now") / 1e6; now, full = num("charge_now") / 1e6 * v, num("charge_full") / 1e6 * v
+        else: now = full = None
+        if now is not None:
+            if status == "Discharging": hours = now / watts
+            elif status == "Charging": hours = max(0.0, full - now) / watts
+    return {"pct": int(round(pct)), "status": status, "watts": round(watts, 1) if watts is not None else None, "hours": round(hours, 2) if hours is not None else None}
+
+
+def gpu_from_nvidia(csv_line):
+    f = [x.strip() for x in csv_line.strip().split(",")]
+    if len(f) < 3: return None
+    try: return {"pct": int(float(f[0])), "mem_used": int(float(f[1])), "mem_total": int(float(f[2])), "source": "nvidia"}
+    except ValueError: return None
+
+
+def temp_pick(hwmons):
+    """hwmons: list of (name, millidegrees). Prefer CPU sensors, then anything."""
+    order = ["coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"]
+    for want in order:
+        for name, mdeg in hwmons:
+            if name == want and mdeg is not None: return {"c": round(mdeg / 1000.0, 1), "source": name}
+    for name, mdeg in hwmons:
+        if mdeg is not None: return {"c": round(mdeg / 1000.0, 1), "source": name}
+    return None
+
+# ---------------------------------------------------------------- readers
+def _read(path):
+    try:
+        with open(path) as fh: return fh.read()
+    except OSError: return None
+
+
+def sample(cpu_pause=0.2):
+    out = {"t": time.time(), "cpu": None, "mem": None, "load": None, "temp": None, "net": None, "battery": None, "gpu": None}
+    try:
+        a = cpu_times((_read("/proc/stat") or "").splitlines()[0]); time.sleep(cpu_pause); b = cpu_times((_read("/proc/stat") or "").splitlines()[0])
+        out["cpu"] = {"pct": cpu_percent(a, b), "cores": os.cpu_count()}
+    except Exception: pass
+    try: out["mem"] = mem_info(_read("/proc/meminfo") or "")
+    except Exception: pass
+    try: out["load"] = [round(x, 2) for x in os.getloadavg()]
+    except Exception: pass
+    try:
+        hw = []
+        for d in sorted(glob.glob("/sys/class/hwmon/hwmon*")):
+            name = (_read(os.path.join(d, "name")) or "").strip(); t = _read(os.path.join(d, "temp1_input"))
+            hw.append((name, int(t.strip()) if t and t.strip().lstrip("-").isdigit() else None))
+        if not any(m for _, m in hw):
+            t = _read("/sys/class/thermal/thermal_zone0/temp"); hw.append(("thermal_zone0", int(t.strip()) if t else None))
+        out["temp"] = temp_pick(hw)
+    except Exception: pass
+    try:
+        iface = sys.argv[sys.argv.index("--iface") + 1] if "--iface" in sys.argv else None
+        if not iface:
+            r = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True, timeout=2)
+            iface = default_iface(r.stdout)
+        if iface: out["net"] = net_counters(_read("/proc/net/dev") or "", iface)
+    except Exception: pass
+    try:
+        for d in sorted(glob.glob("/sys/class/power_supply/BAT*")):
+            vals = {k: _read(os.path.join(d, k)) for k in ("capacity", "status", "current_now", "voltage_now", "charge_now", "charge_full", "power_now", "energy_now", "energy_full")}
+            b = battery_from({k: v for k, v in vals.items() if v is not None})
+            if b: out["battery"] = b; break
+    except Exception: pass
+    try:
+        gpu = None
+        try:
+            r = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=2)
+            if r.returncode == 0 and r.stdout.strip(): gpu = gpu_from_nvidia(r.stdout.splitlines()[0])
+        except (OSError, subprocess.SubprocessError): pass
+        if gpu is None:
+            for p in glob.glob("/sys/class/drm/card*/device/gpu_busy_percent"):
+                t = _read(p)
+                if t and t.strip().isdigit(): gpu = {"pct": int(t.strip()), "mem_used": None, "mem_total": None, "source": "amdgpu"}; break
+        out["gpu"] = gpu
+    except Exception: pass
+    return out
+
+
+if __name__ == "__main__":
+    print(json.dumps(sample()))

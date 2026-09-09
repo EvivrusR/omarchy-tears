@@ -100,7 +100,7 @@ class Cli(unittest.TestCase):
         code, _, err = self.run_cli("add", "stats", "--set", "intervalSec=zero")
         self.assertEqual(code, 1); self.assertIn("integer", err)
         self.assertEqual(len(self.read()), 2)
-        self.assertEqual(self.run_cli("add", "weather")[0], 2)
+        self.assertEqual(self.run_cli("add", "nope")[0], 2)
 
     def test_set_types_values(self):
         code, _, _ = self.run_cli("set", "1", "enabled=true", "show=cpu,mem", "intervalSec=5", "scale=1.5")
@@ -224,6 +224,117 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
 
+    def test_apps_listing_and_dock(self):
+        data = self.home / ".local" / "share" / "applications"; data.mkdir(parents=True)
+        (data / "Alacritty.desktop").write_text("[Desktop Entry]\nType=Application\nName=Alacritty\nIcon=Alacritty\n")
+        (data / "hidden.desktop").write_text("[Desktop Entry]\nType=Application\nName=Hidden\nNoDisplay=true\n")
+        (data / "link.desktop").write_text("[Desktop Entry]\nType=Link\nName=Link\n")
+        (data / "btop.desktop").write_text("[Desktop Entry]\nType=Application\nName=btop++\n")
+        os.environ["XDG_DATA_HOME"] = str(self.home / ".local" / "share"); os.environ["XDG_DATA_DIRS"] = str(self.home / "nowhere")
+        try:
+            apps = dw.list_apps(hides={"btop"})
+            self.assertEqual(apps["Alacritty"], {"name": "Alacritty", "icon": "Alacritty", "hidden": False})
+            self.assertTrue(apps["hidden"]["hidden"]); self.assertTrue(apps["btop"]["hidden"]); self.assertNotIn("link", apps)
+            code, out, _ = self.run_cli("apps"); self.assertEqual(code, 0); self.assertIn("Alacritty", out); self.assertNotIn("Hidden", out)
+            code, out, _ = self.run_cli("apps", "--json", "--all"); self.assertEqual({a["id"] for a in json.loads(out)["apps"]} >= {"Alacritty", "hidden"}, True)
+        finally:
+            os.environ.pop("XDG_DATA_HOME", None); os.environ.pop("XDG_DATA_DIRS", None)
+        code, out, err = self.run_cli("add", "dock", "--set", "apps=Alacritty,chromium")
+        self.assertEqual(code, 0, err)
+        e = json.loads(self.cfg.read_text())["widgets"][-1]
+        self.assertEqual(e["apps"], ["Alacritty", "chromium"]); self.assertNotIn("corner", e)   # default corner comes from the type
+        self.assertEqual(dw.apply_defaults(e, REGISTRY)["corner"], "bottom-center")
+        code, out, _ = self.run_cli("list"); self.assertIn("Alacritty,chromium", out); self.assertIn("bottom-center", out)
+        code, out, _ = self.run_cli("types", "dock"); self.assertIn("bottom-center", out)
+        self.assertEqual(self.run_cli("set", "2", "corner=middle")[0], 1)
+
+    def test_grid_setting_round_trips_every_writer(self):
+        code, out, err = self.run_cli("grid")
+        self.assertEqual(code, 0); self.assertIn("off", out); self.assertIn("24", out)
+        self.assertEqual(self.run_cli("grid", "on")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": True, "size": 24})
+        self.assertEqual(self.run_cli("grid", "32")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": True, "size": 32})
+        self.assertEqual(self.run_cli("grid", "2")[0], 2); self.assertEqual(self.run_cli("grid", "huge")[0], 2)
+        # mutators keep it
+        self.assertEqual(self.run_cli("add", "clock")[0], 0)
+        self.assertEqual(self.run_cli("set", "0", "x=10")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"]["size"], 32)
+        # preset apply keeps it, and a preset never carries it
+        self.assertEqual(self.run_cli("preset", "save", "g")[0], 0)
+        user = self.home / ".config" / "omarchy" / "desktop-widgets.presets" / "g.jsonc"
+        self.assertNotIn("grid", json.loads(user.read_text()))
+        self.assertEqual(self.run_cli("preset", "apply", "minimal")[0], 0)
+        self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": True, "size": 32})
+        # write (editor path) keeps it when the document omits it, honours it when present
+        code, _, err = self.run_cli_stdin(json.dumps({"version": 1, "widgets": [{"type": "clock"}]}), "write")
+        self.assertEqual(code, 0, err); self.assertEqual(json.loads(self.cfg.read_text())["grid"]["size"], 32)
+        code, _, err = self.run_cli_stdin(json.dumps({"version": 1, "widgets": [], "grid": {"enabled": False, "size": 16}}), "write")
+        self.assertEqual(code, 0, err); self.assertEqual(json.loads(self.cfg.read_text())["grid"], {"enabled": False, "size": 16})
+        self.assertEqual(self.run_cli("grid", "off")[0], 0)
+        code, out, _ = self.run_cli("validate")
+        self.assertEqual(code, 0)
+        self.cfg.write_text(json.dumps({"widgets": [], "grid": {"enabled": True, "size": 1}}))
+        code, out, err = self.run_cli("validate"); self.assertEqual(code, 1); self.assertIn("grid", err)
+
+    def test_shipped_presets_validate(self):
+        names = sorted(p.stem for p in (ROOT / "presets").glob("*.jsonc"))
+        self.assertEqual(names, ["column", "dashboard", "minimal", "ops"])
+        for n in names:
+            code, out, err = self.run_cli("validate", str(ROOT / "presets" / f"{n}.jsonc"))
+            self.assertEqual(code, 0, f"{n}: {err}")
+            self.assertIn("0 warning", out, n)
+
+    def test_preset_list_apply_save_remove(self):
+        code, out, _ = self.run_cli("preset", "list")
+        self.assertEqual(code, 0); self.assertIn("minimal", out); self.assertIn("shipped", out)
+        code, out, _ = self.run_cli("preset", "list", "--json")
+        j = json.loads(out); self.assertEqual({p["name"] for p in j["presets"]} >= {"minimal", "dashboard", "column"}, True)
+        self.assertTrue(all(p["origin"] == "shipped" and p["widgets"] > 0 and "description" in p for p in j["presets"]))
+        code, out, _ = self.run_cli("preset", "show", "minimal")
+        self.assertEqual(code, 0); self.assertIn('"clock"', out)
+        # save current (2 widgets) as a user preset, apply minimal, then restore
+        code, out, err = self.run_cli("preset", "save", "mine")
+        self.assertEqual(code, 0, err)
+        user = self.home / ".config" / "omarchy" / "desktop-widgets.presets" / "mine.jsonc"
+        self.assertTrue(user.exists())
+        self.assertEqual(self.run_cli("preset", "save", "mine")[0], 2)          # no overwrite without --force
+        self.assertEqual(self.run_cli("preset", "save", "mine", "--force")[0], 0)
+        code, out, err = self.run_cli("preset", "apply", "minimal")
+        self.assertEqual(code, 0, err)
+        cfg = json.loads(self.cfg.read_text())
+        self.assertEqual([w["type"] for w in cfg["widgets"]], ["clock"]); self.assertEqual(cfg["widgets"][0]["scale"], 1.4)
+        self.assertTrue(self.cfg.with_name("desktop-widgets.json.bak").exists())
+        code, out, err = self.run_cli("preset", "apply", "mine")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(json.loads(self.cfg.read_text())["widgets"]), 2)
+        # user preset shadows a shipped name
+        (user.parent / "minimal.jsonc").write_text('{"widgets": [{"type": "stats"}, {"type": "stats"}]}')
+        code, out, _ = self.run_cli("preset", "list")
+        self.assertIn("user", [l for l in out.splitlines() if l.startswith("minimal")][0])
+        self.run_cli("preset", "apply", "minimal")
+        self.assertEqual(len(json.loads(self.cfg.read_text())["widgets"]), 2)
+        # errors
+        self.assertEqual(self.run_cli("preset", "apply", "nope")[0], 2)
+        self.assertEqual(self.run_cli("preset", "save", "Bad Name")[0], 2)
+        (user.parent / "broken.jsonc").write_text('{"widgets": [{"type": "nope"}]}')
+        self.assertEqual(self.run_cli("preset", "apply", "broken")[0], 1)
+        code, out, _ = self.run_cli("preset", "list")
+        self.assertIn("INVALID", [l for l in out.splitlines() if l.startswith("broken")][0])
+        self.assertEqual(self.run_cli("preset", "remove", "mine")[0], 0); self.assertFalse(user.exists())
+        self.assertEqual(self.run_cli("preset", "remove", "dashboard")[0], 2)  # shipped: never removed
+
+    def test_shape_omits_common_and_list_shows_z(self):
+        keys = [f["key"] for f in dw.fields_for("shape", dw.load_registry())]
+        self.assertIn("kind", keys); self.assertIn("z", keys); self.assertNotIn("color", keys)
+        code, out, err = self.run_cli("add", "shape", "--corner", "top-left", "--set", "z=-1", "--set", "width=300", "--set", "alpha=0.5")
+        self.assertEqual(code, 0, err)
+        code, out, _ = self.run_cli("list")
+        self.assertEqual(code, 0)
+        line = [l for l in out.splitlines() if "shape" in l][0]
+        self.assertIn("z=-1", line); self.assertIn("rect 300", line); self.assertIn("background", line)
+        self.assertEqual(self.run_cli("set", "0", "z=500")[0], 1)
+
     def test_registry_json_and_new_scaffold(self):
         code, out, _ = self.run_cli("registry", "--json")
         self.assertEqual(code, 0); self.assertIn("clock", json.loads(out)["types"])
@@ -257,7 +368,8 @@ class Cli(unittest.TestCase):
         self.assertTrue(link.is_symlink()); self.assertEqual(os.path.realpath(link), os.path.realpath(ROOT / "bin" / "desktop-widgets"))
         self.assertTrue(self.cfg.exists())
         m = menu.read_text(); b = binds.read_text()
-        self.assertIn("desktop-widgets:begin", m); self.assertIn('"household.widgets"', m); self.assertIn('"household.widgets.editor"', m)
+        self.assertIn("desktop-widgets:begin", m); self.assertIn('"style.widgets"', m); self.assertIn('"style.widgets.editor"', m)
+        self.assertNotIn("household.widgets", m)   # Style is the default home even when Household exists
         self.assertIn("desktop-widgets:begin", b); self.assertIn("SUPER + ALT + W", b); self.assertIn("SUPER + ALT + A", b)
         self.assertIn('"household.vault"', m)   # untouched
         json.loads(dw.strip_jsonc(m))            # still valid JSONC
@@ -277,9 +389,28 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("install", "--no-link")
         self.assertEqual(code, 0, err)
         m = menu.read_text(); b = binds.read_text()
-        self.assertIn('"widgets": {', m); self.assertIn('"widgets.editor"', m); self.assertNotIn("household.widgets", m)
+        self.assertIn('"style.widgets": {', m); self.assertIn('"style.widgets.editor"', m); self.assertNotIn("household.widgets", m)
         json.loads(dw.strip_jsonc(m))
         self.assertEqual(b.count("SUPER + ALT + W"), 1); self.assertIn("SUPER + ALT + A", b)
+
+    def test_install_menu_parent_override_and_hand_placed_rows(self):
+        menu, _ = self.seed_omarchy_files()
+        code, out, err = self.run_cli("install", "--no-link", "--no-keys", "--menu-parent", "household")
+        self.assertEqual(code, 0, err)
+        m = menu.read_text()
+        self.assertIn('"household.widgets": {', m); self.assertIn('"household.widgets.arrange"', m); self.assertNotIn("style.widgets", m)
+        json.loads(dw.strip_jsonc(m))
+        code, out, _ = self.run_cli("install", "--no-link", "--no-keys", "--menu-parent", "")
+        self.assertEqual(code, 0); self.assertIn("already", out)          # any *.widgets submenu counts as installed
+        self.assertEqual(menu.read_text(), m)
+        menu.write_text('{\n  "style.widgets": {"icon":"x","label":"Desktop widgets"}\n}\n')   # hand-placed, no markers
+        code, out, _ = self.run_cli("install", "--no-link", "--no-keys")
+        self.assertEqual(code, 0); self.assertIn("already", out)
+        menu.write_text('{\n  "learn": {"when":"false"}\n}\n')
+        code, out, err = self.run_cli("install", "--no-link", "--no-keys", "--menu-parent", "")
+        self.assertEqual(code, 0, err); m = menu.read_text()
+        self.assertIn('"widgets": {', m); self.assertIn('"widgets.editor"', m); self.assertNotIn('"style.widgets"', m)
+        json.loads(dw.strip_jsonc(m))
 
     def test_init_refuses_overwrite_without_force(self):
         code, out, err = self.run_cli("init")

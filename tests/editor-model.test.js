@@ -44,7 +44,7 @@ test("moveEntry swaps neighbours and clamps at the ends", () => {
 test("entryLabel prefers title, then display name", () => {
   assert.equal(M.entryLabel({ type: "clock" }, registry), "Clock");
   assert.equal(M.entryLabel({ type: "command", title: "UPTIME" }, registry), "UPTIME");
-  assert.equal(M.entryLabel({ type: "weather" }, registry), "weather");
+  assert.equal(M.entryLabel({ type: "nope" }, registry), "nope");
   assert.equal(M.entryLabel({}, registry), "(no type)");
 });
 
@@ -54,4 +54,14 @@ test("firstError and dirty", () => {
   assert.equal(M.firstError(msgs, 0), "");
   assert.equal(M.dirty([{ type: "clock" }], [{ type: "clock" }]), false);
   assert.equal(M.dirty([{ type: "clock", x: 1 }], [{ type: "clock" }]), true);
+});
+
+test("fieldsFor honours omitCommon", () => {
+  const keys = M.fieldsFor("shape", registry).map((x) => x.key);
+  assert.ok(keys.includes("z") && keys.includes("kind") && !keys.includes("color"));
+});
+
+test("newEntry uses the type's default corner", () => {
+  assert.deepEqual(M.newEntry("dock", registry), { type: "dock", corner: "bottom-center" });
+  assert.deepEqual(M.newEntry("clock", registry), { type: "clock", corner: "top-right" });
 });

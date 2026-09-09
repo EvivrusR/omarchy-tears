@@ -4,7 +4,7 @@ homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
 
 Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
 two engines identical."""
-import argparse, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, datetime, json, os, re, shutil, subprocess, sys, tempfile
 
 PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -100,7 +100,10 @@ def load_registry(path=REGISTRY_PATH, dropins=True):
 def fields_for(type_, registry):
     t = registry.get("types", {}).get(type_)
     if not t: return []
-    return list(registry.get("common", [])) + list(t.get("fields", []))
+    omit = set(t.get("omitCommon", []))
+    over = t.get("defaults", {}) or {}
+    common = [dict(f, default=over[f["key"]]) if f["key"] in over else f for f in registry.get("common", []) if f["key"] not in omit]
+    return common + list(t.get("fields", []))
 
 
 def apply_defaults(entry, registry):
@@ -137,6 +140,10 @@ def _check_field(f, value, push):
             push("error", f"{f['key']} must be a list"); return
         for v in value:
             if v not in f.get("options", []): push("error", f"{f['key']} has unknown option '{v}'")
+    elif t == "apps":
+        if not isinstance(value, list): push("error", f"{f['key']} must be a list of desktop-entry ids", f["key"]); return
+        for a, v in enumerate(value):
+            if not isinstance(v, str) or not v: push("error", f"{f['key']}.{a} must be a desktop-entry id", f["key"])
     elif t == "rows":
         if not isinstance(value, list):
             push("error", f"{f['key']} must be a list"); return
@@ -149,8 +156,35 @@ def _check_field(f, value, push):
         if not isinstance(value, str): push("error", f"{f['key']} must be a string")
 
 
+GRID_DEFAULT, GRID_MIN, GRID_MAX = {"enabled": False, "size": 24}, 4, 256
+
+
+def settings_of(parsed):
+    """Top-level keys other than version/widgets; every writer carries them over."""
+    if not isinstance(parsed, dict): return {}
+    return {k: v for k, v in parsed.items() if k not in ("version", "widgets")}
+
+
+def grid_of(parsed):
+    g = parsed.get("grid") if isinstance(parsed, dict) and isinstance(parsed.get("grid"), dict) else {}
+    size = g.get("size", GRID_DEFAULT["size"])
+    if not isinstance(size, (int, float)) or isinstance(size, bool): size = GRID_DEFAULT["size"]
+    return {"enabled": g.get("enabled") is True, "size": min(GRID_MAX, max(GRID_MIN, int(round(size))))}
+
+
+def validate_grid(parsed, messages):
+    if not isinstance(parsed, dict) or "grid" not in parsed: return
+    g = parsed["grid"]
+    def push(m): messages.append({"level": "error", "widget": -1, "key": "grid", "message": m})
+    if not isinstance(g, dict): push("grid must be an object"); return
+    if "enabled" in g and not isinstance(g["enabled"], bool): push("grid.enabled must be true or false")
+    if "size" in g and not (isinstance(g["size"], int) and not isinstance(g["size"], bool) and GRID_MIN <= g["size"] <= GRID_MAX):
+        push(f"grid.size must be an integer {GRID_MIN}..{GRID_MAX}")
+
+
 def validate_config(parsed, registry):
     messages = []
+    validate_grid(parsed, messages)
     if isinstance(parsed, list): widgets = parsed
     elif isinstance(parsed, dict) and isinstance(parsed.get("widgets"), list): widgets = parsed["widgets"]
     else:
@@ -199,8 +233,15 @@ def summarize(entry, registry):
         "command": lambda e: (e.get("title") or e.get("command") or "")[:40],
         "agents": lambda e: e.get("agent", "claude"),
         "template": lambda e: next((str(r.get("text", "")) for r in e.get("rows", []) if isinstance(r, dict) and r.get("kind") == "heading"), f"{len(e.get('rows', []))} rows"),
+        "battery": lambda e: e.get("style", "outline"),
+        "sysinfo": lambda e: f"{e.get('logo', 'omarchy')} {len(e.get('fields', []) or [1]*9)} rows",
+        "monitor": lambda e: ",".join(e.get("rows", ["cpu", "mem", "net-down", "net-up"])) + f" {e.get('intervalSec', 10)}s/{e.get('windowSec', 300)}s",
+        "weather": lambda e: f"{e.get('place', 'Tokyo, Japan')}" + (f" +effect/{e.get('effectPlacement', 'back')}" if e.get("effect") else ""),
+        "dock": lambda e: ",".join(e.get("apps", [])[:4]) + ("…" if len(e.get("apps", [])) > 4 else ""),
+        "shape": lambda e: f"{e.get('kind', 'rect')} {e.get('width', 320)}×{e.get('height', 200)} {e.get('fill', 'background')}@{e.get('alpha', 0.4)}",
     }
-    return bits.get(t, lambda e: "")(entry)
+    z = entry.get("z", 0)
+    return (f"z={z} " if isinstance(z, (int, float)) and z != 0 else "") + bits.get(t, lambda e: "")(entry)
 
 
 # ---------------------------------------------------------------- commands
@@ -237,7 +278,8 @@ def cmd_list(args, ctx):
         bad = any(m["level"] == "error" and m["widget"] == i for m in messages)
         state = "ERR" if bad else ("off" if e.get("enabled") is False else "on ")
         t = str(e.get("type", "?"))
-        print(f"{i:<2} {t:<8} {state} {str(e.get('corner', 'top-right')):<12} {e.get('x', 48):>4},{e.get('y', 48):<4} {summarize(e, ctx['registry'])}")
+        d = apply_defaults(e, ctx["registry"]) if not bad else e
+        print(f"{i:<2} {t:<8} {state} {str(d.get('corner', 'top-right')):<12} {d.get('x', 48):>4},{d.get('y', 48):<4} {summarize(e, ctx['registry'])}")
     return 0
 
 
@@ -317,7 +359,7 @@ def parse_value(field, text):
         if low in ("true", "yes", "1", "on"): return True
         if low in ("false", "no", "0", "off"): return False
         raise ValueError(f"{field['key']} must be true or false")
-    if t == "multi-enum":
+    if t in ("multi-enum", "apps"):
         return [s.strip() for s in text.split(",") if s.strip()]
     return text
 
@@ -529,6 +571,10 @@ def cmd_write(args, ctx):
     raw = None
     if os.path.exists(ctx["path"]):
         with open(ctx["path"]) as fh: raw = fh.read()
+        try:
+            for k, v in settings_of(json.loads(strip_jsonc(raw))).items(): parsed.setdefault(k, v)
+        except json.JSONDecodeError:
+            pass
     write_config(ctx["path"], parsed, raw)
     print(f"wrote {ctx['path']}: {len(widgets)} widget(s)"); return 0
 
@@ -544,6 +590,176 @@ def cmd_editor(args, ctx):
     """Toggle the editor panel inside the running shell."""
     rc = subprocess.call(["omarchy-shell", "shell", "toggle", PLUGIN_ID, "{}"])
     return 0 if rc == 0 else 2
+
+
+# ---------------------------------------------------------------- apps (desktop entries for the dock)
+def desktop_dirs():
+    home = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    dirs = [os.path.join(home, "applications")]
+    for d in (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":"):
+        if d: dirs.append(os.path.join(d, "applications"))
+    return dirs
+
+
+def read_hides():
+    out = set()
+    for p in ("/usr/share/omarchy/default/omarchy/launcher.hides", os.path.join(_config_base(), "omarchy", "launcher.hides")):
+        try:
+            with open(p) as fh: out.update(l.strip() for l in fh if l.strip() and not l.startswith("#"))
+        except OSError: pass
+    return out
+
+
+def list_apps(dirs=None, hides=None):
+    """id -> {name, icon, hidden}. First directory wins for duplicate ids (XDG precedence)."""
+    out = {}
+    hides = read_hides() if hides is None else hides
+    for d in dirs or desktop_dirs():
+        if not os.path.isdir(d): continue
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".desktop"): continue
+            did = fn[:-8]
+            if did in out: continue
+            name, icon, nodisplay, is_app = did, "", False, True
+            try:
+                with open(os.path.join(d, fn), errors="replace") as fh:
+                    section = ""
+                    for line in fh:
+                        line = line.strip()
+                        if line.startswith("["): section = line; continue
+                        if section != "[Desktop Entry]": continue
+                        if line.startswith("Name=") and name == did: name = line[5:]
+                        elif line.startswith("Icon="): icon = line[5:]
+                        elif line.startswith("NoDisplay=true"): nodisplay = True
+                        elif line.startswith("Type=") and line[5:] != "Application": is_app = False
+            except OSError: continue
+            if not is_app: continue
+            out[did] = {"name": name, "icon": icon, "hidden": nodisplay or did in hides}
+    return out
+
+
+def cmd_apps(args, ctx):
+    apps = list_apps()
+    if args.json: print(json.dumps({"apps": [dict(v, id=k) for k, v in apps.items() if args.all or not v["hidden"]]})); return 0
+    for k, v in sorted(apps.items(), key=lambda kv: kv[1]["name"].lower()):
+        if v["hidden"] and not args.all: continue
+        print(f"{k:<36} {v['name']}" + ("  (hidden)" if v["hidden"] else ""))
+    return 0
+
+
+# ---------------------------------------------------------------- grid
+def cmd_grid(args, ctx):
+    try:
+        parsed, raw = read_config(ctx["path"])
+    except ValueError as e:
+        print(f"ERROR   {e}", file=sys.stderr); return 1
+    if parsed is None: parsed = {"version": 1, "widgets": []}
+    if isinstance(parsed, list): parsed = {"version": 1, "widgets": parsed}
+    grid = grid_of(parsed)
+    v = (args.value or "").strip().lower()
+    if not v:
+        print(f"grid {'on' if grid['enabled'] else 'off'}, size {grid['size']} px"); return 0
+    if v in ("on", "off", "toggle"):
+        grid["enabled"] = (v == "on") if v != "toggle" else not grid["enabled"]
+    else:
+        try: size = int(v)
+        except ValueError: print("grid: expected on | off | toggle | <size px>", file=sys.stderr); return 2
+        if not GRID_MIN <= size <= GRID_MAX: print(f"grid size must be {GRID_MIN}..{GRID_MAX}", file=sys.stderr); return 2
+        grid["size"] = size; grid["enabled"] = True
+    parsed["grid"] = grid
+    write_config(ctx["path"], parsed, raw if raw else None)
+    print(f"grid {'on' if grid['enabled'] else 'off'}, size {grid['size']} px"); return 0
+
+
+# ---------------------------------------------------------------- presets
+PRESET_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+SHIPPED_PRESETS = os.path.join(PLUGIN_DIR, "presets")
+
+
+def preset_dir():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "omarchy", "desktop-widgets.presets")
+
+
+def load_presets(registry):
+    """name -> {name, origin, path, description, widgets, valid, problems}. User presets shadow shipped ones."""
+    out = {}
+    for origin, d in (("shipped", SHIPPED_PRESETS), ("user", preset_dir())):
+        if not os.path.isdir(d): continue
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".jsonc") and not fn.endswith(".json"): continue
+            name = fn.rsplit(".", 1)[0]
+            if not PRESET_NAME.match(name): continue
+            path = os.path.join(d, fn)
+            info = {"name": name, "origin": origin, "path": path, "description": "", "widgets": 0, "valid": True, "problems": []}
+            try:
+                parsed, _ = read_config(path)
+                widgets, messages = validate_config(parsed, registry) if parsed is not None else (None, [])
+                errs = [m for m in messages if m["level"] == "error"]
+                if widgets is None or errs:
+                    info["valid"] = False; info["problems"] = [m["message"] for m in errs] or ["not a widgets document"]
+                else:
+                    info["widgets"] = len(widgets)
+                if isinstance(parsed, dict): info["description"] = str(parsed.get("description", "") or "")
+            except ValueError as e:
+                info["valid"] = False; info["problems"] = [str(e)]
+            out[name] = info
+    return out
+
+
+def cmd_preset(args, ctx):
+    presets = load_presets(ctx["registry"])
+    op = args.op
+    if op == "list":
+        if args.json:
+            print(json.dumps({"presets": [{k: v for k, v in p.items() if k != "path"} for p in presets.values()]}, indent=2)); return 0
+        for p in presets.values():
+            state = "INVALID: " + "; ".join(p["problems"]) if not p["valid"] else f"{p['widgets']} widget(s)"
+            print(f"{p['name']:<16} {p['origin']:<8} {state:<14} {p['description']}")
+        if not presets: print("no presets")
+        return 0
+    name = args.name or ""
+    if op in ("show", "apply", "remove") and name not in presets:
+        print(f"unknown preset '{name}' (see `desktop-widgets preset list`)", file=sys.stderr); return 2
+    if op == "show":
+        with open(presets[name]["path"]) as fh: print(fh.read(), end=""); return 0
+    if op == "apply":
+        p = presets[name]
+        if not p["valid"]:
+            print(f"preset '{name}' is invalid: " + "; ".join(p["problems"]), file=sys.stderr); return 1
+        parsed, _ = read_config(p["path"])
+        widgets, _ = validate_config(parsed, ctx["registry"])
+        raw = None; settings = {}
+        if os.path.exists(ctx["path"]):
+            with open(ctx["path"]) as fh: raw = fh.read()
+            try: settings = settings_of(json.loads(strip_jsonc(raw)))
+            except json.JSONDecodeError: settings = {}
+        write_config(ctx["path"], dict(settings, version=1, widgets=widgets), raw)
+        print(f"applied preset '{name}' ({len(widgets)} widget(s)) to {ctx['path']}" + (" (previous layout in desktop-widgets.json.bak)" if raw is not None else ""))
+        return 0
+    if op == "save":
+        if not PRESET_NAME.match(name):
+            print("preset names: lowercase letters, digits and dashes, starting with a letter", file=sys.stderr); return 2
+        try:
+            parsed, _ = read_config(ctx["path"])
+        except ValueError as e:
+            print(f"ERROR   {e}", file=sys.stderr); return 1
+        if parsed is None: print(f"no config at {ctx['path']}", file=sys.stderr); return 1
+        widgets, messages = validate_config(parsed, ctx["registry"])
+        if widgets is None or any(m["level"] == "error" for m in messages):
+            print_messages(messages, sys.stderr); print("current layout is invalid; not saved", file=sys.stderr); return 1
+        dest = os.path.join(preset_dir(), name + ".jsonc")
+        if os.path.exists(dest) and not args.force:
+            print(f"{dest} exists (use --force to replace it)", file=sys.stderr); return 2
+        os.makedirs(preset_dir(), exist_ok=True)
+        doc = {"version": 1, "description": args.description or f"saved {datetime.date.today().isoformat()}", "widgets": widgets}
+        with open(dest, "w") as fh: fh.write(json.dumps(doc, indent=2) + "\n")
+        print(f"saved {len(widgets)} widget(s) as preset '{name}' -> {dest}"); return 0
+    if op == "remove":
+        p = presets[name]
+        if p["origin"] != "user": print(f"'{name}' is a shipped preset; only user presets under {preset_dir()} can be removed", file=sys.stderr); return 2
+        os.remove(p["path"]); print(f"removed {p['path']}"); return 0
+    return 2
 
 
 # ---------------------------------------------------------------- install
@@ -596,15 +812,17 @@ def menu_rows(parent):
     return rows
 
 
-def install_menu(path, report):
+MENU_PARENT_DEFAULT = "style"   # Omarchy's own Style submenu exists on every install
+
+
+def install_menu(path, report, parent=MENU_PARENT_DEFAULT):
     if not os.path.exists(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as fh: fh.write("{\n}\n")
     with open(path) as fh: text = fh.read()
-    if "desktop-widgets:begin" in text or '"household.widgets"' in text or '"widgets":' in text:
-        report("menu rows", "already"); return
-    household = re.search(r'"household"\s*:', text) is not None
-    rows = menu_rows("household" if household else "")
+    if "desktop-widgets:begin" in text or re.search(r'"(?:[\w-]+\.)*widgets"\s*:', text):
+        report("menu rows", "already"); return     # ours, or a hand-placed *.widgets submenu
+    rows = menu_rows(parent)
     open_idx = text.find("{")
     if open_idx < 0: report("menu rows", "skipped (no JSON object in file)"); return
     rest = strip_jsonc(text[open_idx + 1:]).strip()
@@ -616,7 +834,7 @@ def install_menu(path, report):
     lines.append(MENU_END)
     _backup_once(path)
     with open(path, "w") as fh: fh.write(text[:open_idx + 1] + "\n" + "\n".join(lines) + "\n" + text[open_idx + 1:].lstrip("\n"))
-    report("menu rows", "done" + ("" if household else " (top-level 'widgets' submenu)"))
+    report("menu rows", "done (" + (f"{parent}.widgets" if parent else "top-level 'widgets' submenu") + ")")
 
 
 def install_bindings(path, report):
@@ -661,7 +879,7 @@ def cmd_install(args, ctx):
     def report(what, state): print(f"  {what:<20} {state}")
     print("desktop-widgets install")
     if not args.no_link: install_link(report)
-    if not args.no_menu: install_menu(menu_path(), report)
+    if not args.no_menu: install_menu(menu_path(), report, args.menu_parent)
     if not args.no_keys: install_bindings(bindings_path(), report)
     if not args.no_init:
         if os.path.exists(ctx["path"]): report("config", "already")
@@ -700,12 +918,18 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("path", help="print the config path").set_defaults(fn=cmd_path)
     ini = sub.add_parser("init", help="write the example layout as your config"); ini.add_argument("--force", action="store_true"); ini.set_defaults(fn=cmd_init)
-    ins = sub.add_parser("install", help="symlink the CLI, add menu rows and keybinds, write the example layout"); [ins.add_argument(f, action="store_true") for f in ("--no-link", "--no-menu", "--no-keys", "--no-init")]; ins.set_defaults(fn=cmd_install)
+    ins = sub.add_parser("install", help="symlink the CLI, add menu rows and keybinds, write the example layout"); [ins.add_argument(f, action="store_true") for f in ("--no-link", "--no-menu", "--no-keys", "--no-init")]; ins.add_argument("--menu-parent", default=MENU_PARENT_DEFAULT, metavar="ID", help="submenu to put the rows under (default: style; '' = top level)"); ins.set_defaults(fn=cmd_install)
     uni = sub.add_parser("uninstall", help="remove what install added (config kept unless --purge)"); uni.add_argument("--purge", action="store_true"); uni.set_defaults(fn=cmd_uninstall)
     v = sub.add_parser("validate", help="validate the config (exit 1 on errors)"); v.add_argument("file", nargs="?"); v.set_defaults(fn=cmd_validate)
     sub.add_parser("list", help="list widgets").set_defaults(fn=cmd_list)
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
+    ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
+    gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
+    pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
+    pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")
+    pr.add_argument("--json", action="store_true"); pr.add_argument("--force", action="store_true"); pr.add_argument("--description", default="")
+    pr.set_defaults(fn=cmd_preset)
     n = sub.add_parser("new", help="scaffold a drop-in widget type under ~/.config/omarchy/desktop-widgets.d/"); n.add_argument("name"); n.add_argument("--force", action="store_true"); n.set_defaults(fn=cmd_new)
     def idx(sp):
         sp.add_argument("index", type=int); sp.add_argument("--force", action="store_true", help="write even if the file has comments")

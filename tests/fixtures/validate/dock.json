@@ -1,0 +1,9 @@
+{
+  "config": { "widgets": [
+    { "type": "dock", "apps": "Alacritty" },
+    { "type": "dock", "apps": ["Alacritty", 3, ""] },
+    { "type": "dock", "apps": ["Alacritty", "chromium"], "corner": "bottom-center" }
+  ] },
+  "expect": { "widgets": 3, "errors": 3, "warnings": 0,
+    "messages": ["widget 0: apps must be a list of desktop-entry ids", "widget 1: apps.1 must be a desktop-entry id", "widget 1: apps.2 must be a desktop-entry id"] }
+}

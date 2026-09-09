@@ -1,0 +1,19 @@
+{
+  "config": {
+    "widgets": [
+      { "type": "shape", "kind": "panel", "z": 200 },
+      { "type": "shape", "kind": "pill", "width": 240, "height": 40, "fill": "accent", "alpha": 0.3, "color": "#fff", "z": -1 },
+      { "type": "clock", "z": 2 }
+    ]
+  },
+  "expect": {
+    "widgets": 3,
+    "errors": 2,
+    "warnings": 1,
+    "messages": [
+      "widget 0: kind must be one of rect, pill, circle, line",
+      "widget 0: z must be at most 100",
+      "widget 1: unknown key 'color'"
+    ]
+  }
+}

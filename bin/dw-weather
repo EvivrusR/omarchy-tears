@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Weather for the desktop widgets via Open-Meteo (no key, no location detection:
+the place is whatever you typed; default Tokyo, Japan).
+
+  dw-weather [--place "Tokyo, Japan"] [--units metric|imperial] [--hours 12] [--max-age-min 10]
+
+Geocoding results are cached forever per place; forecasts are cached for
+--max-age-min so the widget and the effect window share one fetch. Output is
+one JSON object; on network failure the last cached forecast is returned with
+"stale": true, or {"error": ...} if there is none. Standard library only.
+Weather data by Open-Meteo.com (CC BY 4.0)."""
+import json, os, re, sys, time, urllib.parse, urllib.request
+
+CACHE_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"), "desktop-widgets", "weather")
+DEFAULT_PLACE = "Tokyo, Japan"
+ATTRIBUTION = "Weather data by Open-Meteo.com"
+UA = "omarchy-desktop-widgets/0.5 (https://github.com/EvivrusR/omarchy-tears)"
+
+# ---------------------------------------------------------------- pure (tested)
+WMO = [
+    ((0, 0), "Clear", "clear"), ((1, 1), "Mainly clear", "clear"), ((2, 2), "Partly cloudy", "partly"), ((3, 3), "Overcast", "overcast"),
+    ((45, 48), "Fog", "fog"), ((51, 57), "Drizzle", "drizzle"), ((61, 65), "Rain", "rain"), ((66, 67), "Freezing rain", "rain"),
+    ((71, 77), "Snow", "snow"), ((80, 82), "Rain showers", "rain"), ((85, 86), "Snow showers", "snow"), ((95, 95), "Thunderstorm", "storm"), ((96, 99), "Thunderstorm with hail", "storm"),
+]
+ICONS = {"clear": ("\U000f0599", "\U000f0594"), "partly": ("\U000f0595", "\U000f0f31"), "overcast": ("\U000f0590", "\U000f0590"), "fog": ("\U000f0591", "\U000f0591"),
+         "drizzle": ("\U000f0597", "\U000f0597"), "rain": ("\U000f0596", "\U000f0596"), "snow": ("\U000f0598", "\U000f0598"), "storm": ("\U000f067e", "\U000f067e")}
+
+
+def wmo_describe(code, is_day=True):
+    """-> (description, group, icon)"""
+    try: c = int(code)
+    except (TypeError, ValueError): c = -1
+    for (lo, hi), desc, group in WMO:
+        if lo <= c <= hi:
+            if 63 <= c <= 65 or c == 82: desc = "Heavy rain" if c >= 65 or c == 82 else "Rain"
+            return desc, group, ICONS[group][0 if is_day else 1]
+    return "Unknown", "clear", ICONS["clear"][0 if is_day else 1]
+
+
+def slug(place):
+    return re.sub(r"[^a-z0-9]+", "-", place.strip().lower()).strip("-") or "place"
+
+
+def split_place(place):
+    parts = [p.strip() for p in place.split(",") if p.strip()]
+    return (parts[0] if parts else place.strip(), parts[1] if len(parts) > 1 else "")
+
+
+def pick_geo(results, place):
+    """Prefer a result whose country (or admin1) matches the part after the comma."""
+    if not results: return None
+    _, hint = split_place(place)
+    h = hint.lower()
+    if h:
+        for r in results:
+            if h in (str(r.get("country", "")).lower(), str(r.get("country_code", "")).lower(), str(r.get("admin1", "")).lower()): return r
+    return results[0]
+
+
+def parse_forecast(data, units="metric", hours=12):
+    cur, hr = data.get("current", {}), data.get("hourly", {})
+    is_day = bool(cur.get("is_day", 1))
+    desc, group, icon = wmo_describe(cur.get("weather_code"), is_day)
+    out = {"current": {"temp": cur.get("temperature_2m"), "feels": cur.get("apparent_temperature"), "humidity": cur.get("relative_humidity_2m"),
+                       "wind": cur.get("wind_speed_10m"), "precip": cur.get("precipitation"), "code": cur.get("weather_code"), "isDay": is_day,
+                       "desc": desc, "group": group, "icon": icon, "time": cur.get("time")},
+           "hourly": [], "units": {"temp": "°F" if units == "imperial" else "°C", "wind": "mph" if units == "imperial" else "km/h"}}
+    times = hr.get("time") or []
+    for i in range(min(hours, len(times))):
+        code = (hr.get("weather_code") or [None] * len(times))[i]
+        d, g, ic = wmo_describe(code, True)
+        out["hourly"].append({"time": times[i][11:16] if len(times[i]) >= 16 else times[i], "temp": (hr.get("temperature_2m") or [None] * len(times))[i],
+                              "pop": (hr.get("precipitation_probability") or [None] * len(times))[i], "code": code, "icon": ic, "group": g})
+    return out
+
+# ---------------------------------------------------------------- network + cache
+def _get(url, timeout=8):
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r: return json.loads(r.read().decode("utf-8"))
+
+
+def _cache_path(name): os.makedirs(CACHE_DIR, exist_ok=True); return os.path.join(CACHE_DIR, name)
+
+
+def _load(path):
+    try:
+        with open(path) as fh: return json.load(fh)
+    except (OSError, json.JSONDecodeError): return None
+
+
+def _save(path, obj):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh: json.dump(obj, fh)
+    os.replace(tmp, path)
+
+
+def geocode(place):
+    path = _cache_path("geo-" + slug(place) + ".json")
+    cached = _load(path)
+    if cached: return cached
+    name, _ = split_place(place)
+    data = _get("https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode({"name": name, "count": 10, "language": "en", "format": "json"}))
+    r = pick_geo(data.get("results") or [], place)
+    if not r: raise ValueError(f"no place found for '{place}'")
+    geo = {"name": r.get("name"), "admin1": r.get("admin1", ""), "country": r.get("country", ""), "lat": r["latitude"], "lon": r["longitude"], "tz": r.get("timezone", "UTC")}
+    _save(path, geo); return geo
+
+
+def forecast(geo, units, hours, max_age_min):
+    path = _cache_path("fc-" + slug(f"{geo['lat']},{geo['lon']},{units},{hours}") + ".json")
+    cached = _load(path)
+    if cached and time.time() - cached.get("fetched", 0) < max_age_min * 60: return cached
+    q = {"latitude": geo["lat"], "longitude": geo["lon"], "current": "temperature_2m,apparent_temperature,relative_humidity_2m,is_day,precipitation,weather_code,wind_speed_10m",
+         "hourly": "temperature_2m,precipitation_probability,weather_code", "forecast_hours": max(1, hours), "timezone": geo["tz"]}
+    if units == "imperial": q.update({"temperature_unit": "fahrenheit", "wind_speed_unit": "mph"})
+    try:
+        data = _get("https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(q))
+    except Exception as e:
+        if cached: cached["stale"] = True; cached["error"] = str(e); return cached
+        raise
+    out = parse_forecast(data, units, hours); out["fetched"] = time.time(); out["stale"] = False
+    _save(path, out); return out
+
+
+def main(argv):
+    def arg(flag, default):
+        return argv[argv.index(flag) + 1] if flag in argv and argv.index(flag) + 1 < len(argv) else default
+    place = arg("--place", DEFAULT_PLACE) or DEFAULT_PLACE
+    units = arg("--units", "metric"); hours = int(arg("--hours", 12)); max_age = float(arg("--max-age-min", 10))
+    try:
+        geo = geocode(place)
+        out = forecast(geo, units, hours, max_age)
+    except Exception as e:
+        print(json.dumps({"error": str(e), "place": {"name": place}, "attribution": ATTRIBUTION})); return 0
+    out["place"] = geo; out["attribution"] = ATTRIBUTION
+    print(json.dumps(out)); return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

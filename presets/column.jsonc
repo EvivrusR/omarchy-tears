@@ -1,0 +1,14 @@
+{
+  // A narrow left-hand column: panel behind, vertical stats, Claude session, small clock.
+  "version": 1,
+  "description": "Narrow left column on a panel: vertical stats, Claude session, clock",
+  "widgets": [
+    { "type": "shape", "corner": "top-left", "x": 24, "y": 40, "z": -1,
+      "kind": "rect", "width": 330, "height": 520, "fill": "background", "alpha": 0.45, "radius": 16, "borderWidth": 1, "borderAlpha": 0.4 },
+    { "type": "clock", "corner": "top-left", "x": 48, "y": 60, "scale": 0.8,
+      "timeFormat": "HH:mm", "dateFormat": "ddd d MMM", "align": "left" },
+    { "type": "stats", "corner": "top-left", "x": 48, "y": 180, "orientation": "vertical",
+      "show": ["cpu", "mem", "disk", "battery"], "intervalSec": 3 },
+    { "type": "agents", "corner": "top-left", "x": 48, "y": 440, "agent": "claude" },
+  ],
+}

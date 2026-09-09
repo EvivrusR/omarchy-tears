@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "homelab.desktop-widgets",
   "name": "Desktop widgets",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "author": "EvivrusR",
   "license": "MIT",
   "description": "Theme-aware widgets (clock, system stats, command output) drawn on the wallpaper layer, configured from ~/.config/omarchy/desktop-widgets.json.",
