@@ -427,6 +427,241 @@
           "description": "Soft dark shadow strength; 0 = none"
         }
       ]
+    },
+    "battery": {
+      "displayName": "Battery",
+      "description": "Charge glyph, percent and time to empty or full; hidden when there is no battery.",
+      "fields": [
+        {
+          "key": "style",
+          "type": "enum",
+          "label": "Glyph",
+          "options": [
+            "outline",
+            "pixel",
+            "text"
+          ],
+          "default": "outline",
+          "description": "outline = icon-font battery, pixel = [████░] segments, text = percent only"
+        },
+        {
+          "key": "showPercent",
+          "type": "boolean",
+          "label": "Show percent",
+          "default": true
+        },
+        {
+          "key": "showTime",
+          "type": "boolean",
+          "label": "Show time left",
+          "default": true,
+          "description": "time to empty (discharging) or to full (charging)"
+        },
+        {
+          "key": "warnAt",
+          "type": "integer",
+          "label": "Warn below (%)",
+          "default": 20,
+          "min": 0,
+          "max": 100
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 30,
+          "min": 5,
+          "max": 3600
+        }
+      ]
+    },
+    "sysinfo": {
+      "displayName": "System info",
+      "description": "fastfetch-style block: logo or your own ASCII art beside a key/value table.",
+      "fields": [
+        {
+          "key": "logo",
+          "type": "string",
+          "label": "Logo",
+          "default": "omarchy",
+          "description": "a fastfetch builtin logo name (omarchy, arch, …) or none"
+        },
+        {
+          "key": "art",
+          "type": "string",
+          "label": "Custom art",
+          "default": "",
+          "description": "your own ASCII art (lines separated by \\n); replaces the logo"
+        },
+        {
+          "key": "artFile",
+          "type": "path",
+          "label": "Art file",
+          "default": "",
+          "description": "read the art from this text file instead"
+        },
+        {
+          "key": "logoPosition",
+          "type": "enum",
+          "label": "Art position",
+          "options": [
+            "left",
+            "above"
+          ],
+          "default": "left"
+        },
+        {
+          "key": "logoColor",
+          "type": "color",
+          "label": "Art colour",
+          "default": "accent"
+        },
+        {
+          "key": "fields",
+          "type": "multi-enum",
+          "label": "Rows",
+          "options": [
+            "os",
+            "host",
+            "kernel",
+            "uptime",
+            "packages",
+            "shell",
+            "wm",
+            "cpu",
+            "gpu",
+            "memory",
+            "disk",
+            "ip",
+            "battery"
+          ],
+          "default": [
+            "os",
+            "kernel",
+            "uptime",
+            "packages",
+            "shell",
+            "wm",
+            "cpu",
+            "memory",
+            "disk"
+          ]
+        },
+        {
+          "key": "title",
+          "type": "boolean",
+          "label": "user@host title",
+          "default": true
+        },
+        {
+          "key": "swatches",
+          "type": "boolean",
+          "label": "Colour swatch row",
+          "default": true
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 60,
+          "min": 10,
+          "max": 86400
+        }
+      ]
+    },
+    "monitor": {
+      "displayName": "Monitor",
+      "description": "CPU, memory, GPU, temperature, load and network over time, as sparklines.",
+      "fields": [
+        {
+          "key": "rows",
+          "type": "multi-enum",
+          "label": "Rows",
+          "options": [
+            "cpu",
+            "mem",
+            "gpu",
+            "temp",
+            "load",
+            "net-down",
+            "net-up"
+          ],
+          "default": [
+            "cpu",
+            "mem",
+            "net-down",
+            "net-up"
+          ]
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Poll every (s)",
+          "default": 10,
+          "min": 2,
+          "max": 600
+        },
+        {
+          "key": "windowSec",
+          "type": "integer",
+          "label": "Show last (s)",
+          "default": 300,
+          "min": 30,
+          "max": 3600
+        },
+        {
+          "key": "graph",
+          "type": "enum",
+          "label": "Graph",
+          "options": [
+            "sparkline",
+            "bars",
+            "none"
+          ],
+          "default": "sparkline"
+        },
+        {
+          "key": "graphHeight",
+          "type": "integer",
+          "label": "Graph height (px)",
+          "default": 28,
+          "min": 8,
+          "max": 200
+        },
+        {
+          "key": "graphWidth",
+          "type": "integer",
+          "label": "Graph width (px)",
+          "default": 200,
+          "min": 40,
+          "max": 1200
+        },
+        {
+          "key": "iface",
+          "type": "string",
+          "label": "Network interface",
+          "default": "",
+          "description": "empty = the default route's interface"
+        },
+        {
+          "key": "title",
+          "type": "string",
+          "label": "Title",
+          "default": ""
+        },
+        {
+          "key": "downColor",
+          "type": "color",
+          "label": "Download colour",
+          "default": "accent"
+        },
+        {
+          "key": "upColor",
+          "type": "color",
+          "label": "Upload colour",
+          "default": "urgent"
+        }
+      ]
     }
   }
 }

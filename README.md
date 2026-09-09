@@ -66,7 +66,7 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, or any drop-in |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, or any drop-in |
 | `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right` |
 | `x`, `y` | 48 | offset from that corner, px |
 | `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
@@ -94,6 +94,19 @@ Per type:
   `~/.local/state/omarchy/agents/usage/<agent>.json`, which the bar widget refreshes every 15 minutes.
   If you disable the bar widget, set `refreshIntervalSec` (e.g. 900) so this widget triggers
   `omarchy-agent-usage-update --limits-only` itself.
+- **battery**: glyph (`style`: `outline` icon-font battery, `pixel` `[████░]`, or `text`), percent, and time to
+  empty or full from the battery's own power draw (`showPercent`, `showTime`, `warnAt` 20 turns it red,
+  `intervalSec` 30). Hidden when the machine has no battery.
+- **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo`
+  (any fastfetch builtin name, default `omarchy`, `none` hides), `art` (your own lines, `\n`-separated) or
+  `artFile` (a text file) replace the logo; `logoPosition` (`left`/`above`), `logoColor` (`accent`), `fields`
+  (any of os, host, kernel, uptime, packages, shell, wm, cpu, gpu, memory, disk, ip, battery), `title`
+  (user@host + rule), `swatches` (theme colour row), `intervalSec` 60. Needs `fastfetch` on PATH (Omarchy ships it).
+- **monitor**: stats over time. `rows` (any of cpu, mem, gpu, temp, load, net-down, net-up), polled every
+  `intervalSec` (10) and kept for `windowSec` (300), drawn as `graph`: `sparkline` (filled, right edge = now),
+  `bars`, or `none`; `graphWidth` 200 / `graphHeight` 28 px; `iface` (empty = default route); `title`;
+  `downColor` (`accent`) / `upColor` (`urgent`). GPU is best effort: NVIDIA via `nvidia-smi`, AMD via sysfs,
+  otherwise `n/a`. The `ops` preset shows all three of these together.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
@@ -171,9 +184,10 @@ carries them over, and presets never contain them.
 
 ## Presets (whole-screen layouts)
 
-A preset is a complete `widgets[]` layout you apply in one go. Three ship with the
-plugin — `minimal` (one big clock), `dashboard` (the example layout on a panel) and
-`column` (a narrow left column: panel, small clock, vertical stats, Claude session) —
+A preset is a complete `widgets[]` layout you apply in one go. Four ship with the
+plugin — `minimal` (one big clock), `dashboard` (the example layout on a panel),
+`column` (a narrow left column: panel, small clock, vertical stats, Claude session) and
+`ops` (system-info block on a panel, monitor sparklines, battery, clock) —
 and you keep your own under `~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`
 (same format as the config, plus an optional `"description"`; a preset of yours with
 a shipped name wins).

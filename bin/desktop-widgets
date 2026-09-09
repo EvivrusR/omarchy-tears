@@ -227,6 +227,9 @@ def summarize(entry, registry):
         "command": lambda e: (e.get("title") or e.get("command") or "")[:40],
         "agents": lambda e: e.get("agent", "claude"),
         "template": lambda e: next((str(r.get("text", "")) for r in e.get("rows", []) if isinstance(r, dict) and r.get("kind") == "heading"), f"{len(e.get('rows', []))} rows"),
+        "battery": lambda e: e.get("style", "outline"),
+        "sysinfo": lambda e: f"{e.get('logo', 'omarchy')} {len(e.get('fields', []) or [1]*9)} rows",
+        "monitor": lambda e: ",".join(e.get("rows", ["cpu", "mem", "net-down", "net-up"])) + f" {e.get('intervalSec', 10)}s/{e.get('windowSec', 300)}s",
         "shape": lambda e: f"{e.get('kind', 'rect')} {e.get('width', 320)}×{e.get('height', 200)} {e.get('fill', 'background')}@{e.get('alpha', 0.4)}",
     }
     z = entry.get("z", 0)

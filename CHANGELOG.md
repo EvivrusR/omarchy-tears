@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Monitor family**: `battery` (glyph styles, time to empty/full), `sysinfo` (fastfetch-style block with logo or custom ASCII art), `monitor` (cpu/mem/gpu/temp/load/net rows with filled sparklines, adjustable poll and window); shared sampler `bin/dw-sample`, `bin/dw-sysinfo`; `ops` preset.
 - **Grid snapping** in arrange mode: `desktop-widgets grid on|off|<px>`, Grid button in the editor, `G` / `[` / `]` while armed; top-level config settings (`grid`) are preserved by every writer.
 - **Presets**: `desktop-widgets preset list|show|apply|save|remove`; three shipped (`minimal`, `dashboard`, `column`), yours under `~/.config/omarchy/desktop-widgets.presets/`; **Presets…** dropdown in the editor.
 - **Stats `orientation`**: `vertical` stacks each bar under its label (first widget variant).
