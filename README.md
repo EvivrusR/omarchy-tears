@@ -274,6 +274,8 @@ Replace `household` with whichever submenu you keep such rows in.
 
 ## Developing
 
+Work happens on branches (`feat/<name>`), merged to `master` when ready; `master` is what `omarchy plugin update` pulls, so it must always run. Push both remotes: `git push origin <branch> && git push github <branch>`.
+
 Code lives in the plugin directory as a git checkout. Config changes hot-reload.
 **Code** changes need `omarchy restart shell`: the shell's plugin reload only
 watches the top level of the plugin directory and keeps already-compiled QML
