@@ -44,7 +44,7 @@ test("moveEntry swaps neighbours and clamps at the ends", () => {
 test("entryLabel prefers title, then display name", () => {
   assert.equal(M.entryLabel({ type: "clock" }, registry), "Clock");
   assert.equal(M.entryLabel({ type: "command", title: "UPTIME" }, registry), "UPTIME");
-  assert.equal(M.entryLabel({ type: "weather" }, registry), "weather");
+  assert.equal(M.entryLabel({ type: "nope" }, registry), "nope");
   assert.equal(M.entryLabel({}, registry), "(no type)");
 });
 

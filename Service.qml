@@ -211,6 +211,12 @@ Item {
     }
     widgets = next
     everLoaded = true
+    // Stacking is creation order and Variants reuses windows, so when the
+    // ordered key list changes in a way appending cannot express, bump `gen`
+    // (part of every placement) to recreate all windows in the right order.
+    var keys = orderedKeys(next)
+    if (Registry.needsRebuild(lastKeys, keys)) { gen += 1; log("stacking changed, rebuilding windows") }
+    lastKeys = keys
     log("loaded " + next.length + " widget(s)" + (next.length !== result.widgets.length ? " (" + (result.widgets.length - next.length) + " skipped)" : ""))
   }
 
@@ -266,20 +272,39 @@ Item {
     }
   }
 
-  // Pairs every widget with every screen it targets.
-  readonly property var placements: {
+  // Pairs every widget with every screen it targets, in stacking order.
+  // Creation order is stacking order (compositor stacks same-layer surfaces
+  // by creation), so walk the widgets by ascending z. A weather widget with
+  // its effect on gets a second, full-screen window; back/front pin it
+  // below/above everything, custom uses the widget's z.
+  property int gen: 0
+  property var lastKeys: []
+  function orderedPlacements(list) {
     var out = []
     var screens = Quickshell.screens
-    // Creation order is stacking order (compositor stacks same-layer surfaces
-    // by creation), so walk the widgets by ascending z.
-    var order = Registry.stackOrder(widgets)
-    for (var o = 0; o < order.length; o++) {
-      var w = widgets[order[o]]
-      for (var s = 0; s < screens.length; s++) {
-        if (w.screen && String(w.screen) !== screens[s].name) continue
-        out.push({ widget: w, screen: screens[s], key: w.__index + "@" + screens[s].name })
+    var items = []
+    for (var i = 0; i < list.length; i++) {
+      var wi = list[i]
+      items.push({ w: wi, z: Number(wi.z) || 0, effect: false })
+      if (String(wi.type) === "weather" && wi.effect === true) {
+        var pl = String(wi.effectPlacement || "back")
+        items.push({ w: wi, z: pl === "back" ? -1e9 : pl === "front" ? 1e9 : (Number(wi.z) || 0), effect: true })
       }
     }
+    var order = Registry.stackOrder(items)
+    for (var o = 0; o < order.length; o++) {
+      var it = items[order[o]], w = it.w
+      for (var s = 0; s < screens.length; s++) {
+        if (w.screen && String(w.screen) !== screens[s].name) continue
+        out.push({ widget: w, screen: screens[s], effect: it.effect, key: w.__index + "@" + screens[s].name + (it.effect ? "#effect" : "") })
+      }
+    }
+    return out
+  }
+  function orderedKeys(list) { return orderedPlacements(list).map(function(p) { return p.key }) }
+  readonly property var placements: {
+    var out = orderedPlacements(widgets)
+    for (var i = 0; i < out.length; i++) out[i].gen = gen
     return out
   }
 
@@ -290,6 +315,7 @@ Item {
       id: win
       required property var modelData
       readonly property var widget: modelData.widget
+      readonly property bool isEffect: modelData.effect === true
       readonly property var override: root.overrides[modelData.key] || null
       readonly property string corner: String(override ? override.corner : (widget.corner || "top-right"))
       readonly property int offsetX: Number(override ? override.x : (widget.x !== undefined ? widget.x : 48))
@@ -297,7 +323,7 @@ Item {
       // Never takes pointer input; arrange mode uses its own overlay window.
       mask: Region {}
       function report() {
-        if (!visible || implicitWidth <= 1 || implicitHeight <= 1) return
+        if (isEffect || !visible || implicitWidth <= 1 || implicitHeight <= 1) return
         root.reportGeometry(modelData.key, widget.__index, modelData.screen.name,
           Arrange.rectFor(corner, offsetX, offsetY, implicitWidth, implicitHeight, modelData.screen.width, modelData.screen.height))
       }
@@ -319,24 +345,26 @@ Item {
       visible: loader.status === Loader.Ready
 
       anchors {
-        top: corner.indexOf("top") === 0
-        bottom: corner.indexOf("bottom") === 0
-        left: corner.indexOf("left") !== -1
-        right: corner.indexOf("right") !== -1
+        top: isEffect || corner.indexOf("top") === 0
+        bottom: isEffect || corner.indexOf("bottom") === 0
+        left: isEffect || corner.indexOf("left") !== -1
+        right: isEffect || corner.indexOf("right") !== -1
       }
       margins {
-        top: anchors.top ? offsetY : 0
-        bottom: anchors.bottom ? offsetY : 0
-        left: anchors.left ? offsetX : 0
-        right: anchors.right ? offsetX : 0
+        top: !isEffect && anchors.top ? offsetY : 0
+        bottom: !isEffect && anchors.bottom ? offsetY : 0
+        left: !isEffect && anchors.left ? offsetX : 0
+        right: !isEffect && anchors.right ? offsetX : 0
       }
 
-      implicitWidth: Math.max(1, Math.ceil(loader.implicitWidth))
-      implicitHeight: Math.max(1, Math.ceil(loader.implicitHeight))
+      implicitWidth: isEffect ? modelData.screen.width : Math.max(1, Math.ceil(loader.implicitWidth))
+      implicitHeight: isEffect ? modelData.screen.height : Math.max(1, Math.ceil(loader.implicitHeight))
 
       Loader {
         id: loader
+        anchors.fill: win.isEffect ? parent : undefined
         source: {
+          if (win.isEffect) return "widgets/WeatherEffect.qml"
           switch (String(win.widget.type)) {
             case "clock": return "widgets/ClockWidget.qml"
             case "stats": return "widgets/StatsWidget.qml"
@@ -347,6 +375,7 @@ Item {
             case "battery": return "widgets/BatteryWidget.qml"
             case "sysinfo": return "widgets/SysinfoWidget.qml"
             case "monitor": return "widgets/MonitorWidget.qml"
+            case "weather": return "widgets/WeatherWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""

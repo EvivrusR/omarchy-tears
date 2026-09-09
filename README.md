@@ -66,7 +66,7 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, or any drop-in |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, or any drop-in |
 | `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right` |
 | `x`, `y` | 48 | offset from that corner, px |
 | `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
@@ -107,6 +107,17 @@ Per type:
   `bars`, or `none`; `graphWidth` 200 / `graphHeight` 28 px; `iface` (empty = default route); `title`;
   `downColor` (`accent`) / `upColor` (`urgent`). GPU is best effort: NVIDIA via `nvidia-smi`, AMD via sysfs,
   otherwise `n/a`. The `ops` preset shows all three of these together.
+- **weather**: current conditions and the next hours for a place you type — `place` (`Tokyo, Japan`;
+  "City, Country", resolved once through Open-Meteo's free geocoder and cached; **never** your IP or
+  location), `units` (`metric`/`imperial`), `refreshMin` 15, `layout` (`stacked`/`inline`), `show` (place,
+  feels, humidity, wind, hours, attribution), `hours` 6. Weather data by Open-Meteo.com (CC BY 4.0); the
+  attribution row is on by default. Offline, the last forecast is shown and marked.
+  **Effect**: `effect: true` adds a second, full-screen window with animated ASCII weather — stars or a
+  sun when clear, drifting clouds, fog, drizzle, rain (slanted when windy), swaying snow, and storm flashes.
+  `effectPlacement`: `back` (default, behind every widget), `front` (above them all), or `custom` (uses the
+  widget's `z`, shown in the editor only then; the effect sits just above its own widget at equal z).
+  `effectOpacity` 0.4 (multiplied by each effect's own preset opacity, so rain is never a wall), `effectDensity` 1,
+  `effectFps` 6, `effectColor` (`foreground`). The animation timer only runs while something moves.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),

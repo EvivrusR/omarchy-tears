@@ -16,8 +16,19 @@ Flickable {
   clip: true
   boundsBehavior: Flickable.StopAtBounds
 
-  readonly property var fields: entry && registry ? Model.fieldsFor(String(entry.type || ""), registry).filter(function(f) { return f.type !== "type" }) : []
-  readonly property int firstTypeField: registry && registry.common ? registry.common.length - 1 : 0
+  // `showWhen: {key: value}` on a field hides it until every named key has that value.
+  function shown(f) {
+    if (!f.showWhen) return true
+    for (var k in f.showWhen) if (String(Model.valueOf(entry, k, registry)) !== String(f.showWhen[k])) return false
+    return true
+  }
+  readonly property var fields: entry && registry ? Model.fieldsFor(String(entry.type || ""), registry).filter(function(f) { return f.type !== "type" && shown(f) }) : []
+  readonly property int firstTypeField: {
+    var t = entry && registry && registry.types ? registry.types[entry.type] : null
+    var own = t && t.fields ? t.fields.map(function(f) { return f.key }) : []
+    for (var i = 0; i < fields.length; i++) if (own.indexOf(fields[i].key) !== -1) return i
+    return fields.length
+  }
   readonly property string typeName: entry && registry && registry.types && registry.types[entry.type] ? (registry.types[entry.type].displayName || entry.type) : String(entry ? entry.type : "")
 
   ColumnLayout {

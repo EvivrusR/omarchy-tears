@@ -72,3 +72,14 @@ test("settingsOf keeps top-level keys other than version/widgets, and gridOf nor
   assert.deepEqual(R.gridOf({ grid: { enabled: "yes", size: 2 } }), { enabled: false, size: 4 });
   assert.deepEqual(R.gridOf({ grid: { enabled: true, size: 9999 } }), { enabled: true, size: 256 });
 });
+
+test("needsRebuild only when existing windows' relative order changes or a new one belongs before an old one", () => {
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "b", "c"]), false);
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "c"]), false);              // removal keeps order
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "b", "c", "d"]), false);    // appended at the top
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["d", "a", "b", "c"]), true);     // new one must go to the back
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["a", "d", "b", "c"]), true);
+  assert.equal(R.needsRebuild(["a", "b", "c"], ["b", "a", "c"]), true);          // z edit swapped two
+  assert.equal(R.needsRebuild([], ["a", "b"]), false);
+  assert.equal(R.needsRebuild(["a"], []), false);
+});

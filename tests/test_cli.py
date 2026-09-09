@@ -100,7 +100,7 @@ class Cli(unittest.TestCase):
         code, _, err = self.run_cli("add", "stats", "--set", "intervalSec=zero")
         self.assertEqual(code, 1); self.assertIn("integer", err)
         self.assertEqual(len(self.read()), 2)
-        self.assertEqual(self.run_cli("add", "weather")[0], 2)
+        self.assertEqual(self.run_cli("add", "nope")[0], 2)
 
     def test_set_types_values(self):
         code, _, _ = self.run_cli("set", "1", "enabled=true", "show=cpu,mem", "intervalSec=5", "scale=1.5")

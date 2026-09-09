@@ -141,4 +141,24 @@ function hasErrors(messages, index) {
   return false
 }
 
-if (typeof module !== "undefined") module.exports = { fieldsFor, applyDefaults, validateConfig, hasErrors, stackOrder, settingsOf, gridOf }
+// The shell's Variants keeps existing windows and appends new ones, so a
+// stacking change (z edit, or a new window that belongs behind an old one)
+// only takes effect if every window is recreated. True when that is needed.
+function needsRebuild(oldKeys, newKeys) {
+  var old = oldKeys || [], now = newKeys || []
+  var present = {}
+  for (var i = 0; i < now.length; i++) present[now[i]] = i
+  var survivors = []
+  for (var j = 0; j < old.length; j++) if (present[old[j]] !== undefined) survivors.push(old[j])
+  if (!survivors.length) return false
+  var lastOld = -1, seen = 0
+  for (var k = 0; k < now.length; k++) {
+    var isOld = false
+    for (var m = 0; m < survivors.length; m++) if (survivors[m] === now[k]) { isOld = true; break }
+    if (isOld) { if (survivors[seen] !== now[k]) return true; seen++; lastOld = k }
+  }
+  for (var n = 0; n < lastOld; n++) if (present[now[n]] !== undefined && survivors.indexOf(now[n]) === -1) return true
+  return false
+}
+
+if (typeof module !== "undefined") module.exports = { fieldsFor, applyDefaults, validateConfig, hasErrors, stackOrder, settingsOf, gridOf, needsRebuild }
