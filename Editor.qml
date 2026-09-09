@@ -131,6 +131,7 @@ Item {
       case "init": initExample(); return "ok"
       case "preset": applyPreset(String(c.name || "")); return "ok"
       case "presets": return JSON.stringify(presets.map(function(p) { return p.name }))
+      case "grid": if (!service) return "no service"; service.setGrid(c.enabled !== false, c.size || service.grid.size); return "ok"
       case "state": return JSON.stringify({ selected: selected, dirty: dirty, saving: saving, status: statusText, count: doc.length, applyOnChange: applyOnChange, presets: presets.length })
       default: return "unknown op"
     }
@@ -217,6 +218,15 @@ Item {
             Button { visible: !root.service; text: "Enable plugin"; bordered: true; onClicked: Quickshell.execDetached(["omarchy", "plugin", "enable", "homelab.desktop-widgets"]) }
             Item { Layout.fillWidth: true }
             Button { text: "Arrange on desktop"; iconText: "󰆾"; bordered: true; tooltipText: "Drag widgets into place; Esc finishes"; enabled: !!root.service; onClicked: { root.service.setArranging(true); root.dismiss() } }
+            Button {
+              readonly property var g: root.service ? root.service.grid : { enabled: false, size: 24 }
+              text: "Grid " + (g.enabled ? g.size + "px" : "off"); iconText: "󰝘"; bordered: true; selected: g.enabled
+              tooltipText: "Snap dragged widgets to a grid (click: on/off · right-click: bigger · middle: smaller). `desktop-widgets grid <px>` sets any size"
+              enabled: !!root.service
+              onClicked: root.service.setGrid(!g.enabled, g.size)
+              MouseArea { anchors.fill: parent; acceptedButtons: Qt.RightButton | Qt.MiddleButton
+                onClicked: function(m) { var g = root.service.grid; root.service.setGrid(true, m.button === Qt.RightButton ? Math.min(256, g.size * 2) : Math.max(4, g.size / 2)) } }
+            }
             Text { text: "j/k select · ctrl+s save · esc closes"; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
           }
 

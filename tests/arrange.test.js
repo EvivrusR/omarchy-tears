@@ -29,3 +29,11 @@ test("moveRect translates and clamps to the screen", () => {
   assert.deepEqual(A.moveRect({ x: 10, y: 20, w: 100, h: 50 }, 5, -30, SW, SH), { x: 15, y: 0, w: 100, h: 50 });
   assert.deepEqual(A.moveRect({ x: 1800, y: 1000, w: 100, h: 50 }, 500, 500, SW, SH), { x: 1820, y: 1030, w: 100, h: 50 });
 });
+
+test("snapPlace rounds the corner offsets to the grid and leaves size<=0 alone", () => {
+  assert.deepEqual(A.snapPlace({ corner: "top-left", x: 50, y: 61 }, 24), { corner: "top-left", x: 48, y: 72 });
+  assert.deepEqual(A.snapPlace({ corner: "bottom-right", x: 13, y: 35 }, 24), { corner: "bottom-right", x: 24, y: 24 });
+  assert.deepEqual(A.snapPlace({ corner: "top-right", x: 5, y: 5 }, 24), { corner: "top-right", x: 0, y: 0 });
+  assert.deepEqual(A.snapPlace({ corner: "top-left", x: 50, y: 61 }, 0), { corner: "top-left", x: 50, y: 61 });
+  assert.deepEqual(A.snapPlace({ corner: "top-left", x: 50, y: 61 }, -8), { corner: "top-left", x: 50, y: 61 });
+});

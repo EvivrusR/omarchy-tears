@@ -63,3 +63,12 @@ test("stackOrder sorts by z then keeps list order", () => {
   assert.deepEqual(R.stackOrder([{ type: "a" }, { type: "b" }]), [0, 1]);
   assert.deepEqual(R.stackOrder([]), []);
 });
+
+test("settingsOf keeps top-level keys other than version/widgets, and gridOf normalises", () => {
+  assert.deepEqual(R.settingsOf({ version: 1, widgets: [], grid: { enabled: true, size: 32 }, later: 1 }), { grid: { enabled: true, size: 32 }, later: 1 });
+  assert.deepEqual(R.settingsOf([{ type: "clock" }]), {});
+  assert.deepEqual(R.gridOf({ grid: { enabled: true, size: 32 } }), { enabled: true, size: 32 });
+  assert.deepEqual(R.gridOf({}), { enabled: false, size: 24 });
+  assert.deepEqual(R.gridOf({ grid: { enabled: "yes", size: 2 } }), { enabled: false, size: 4 });
+  assert.deepEqual(R.gridOf({ grid: { enabled: true, size: 9999 } }), { enabled: true, size: 256 });
+});

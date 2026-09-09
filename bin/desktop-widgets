@@ -150,8 +150,35 @@ def _check_field(f, value, push):
         if not isinstance(value, str): push("error", f"{f['key']} must be a string")
 
 
+GRID_DEFAULT, GRID_MIN, GRID_MAX = {"enabled": False, "size": 24}, 4, 256
+
+
+def settings_of(parsed):
+    """Top-level keys other than version/widgets; every writer carries them over."""
+    if not isinstance(parsed, dict): return {}
+    return {k: v for k, v in parsed.items() if k not in ("version", "widgets")}
+
+
+def grid_of(parsed):
+    g = parsed.get("grid") if isinstance(parsed, dict) and isinstance(parsed.get("grid"), dict) else {}
+    size = g.get("size", GRID_DEFAULT["size"])
+    if not isinstance(size, (int, float)) or isinstance(size, bool): size = GRID_DEFAULT["size"]
+    return {"enabled": g.get("enabled") is True, "size": min(GRID_MAX, max(GRID_MIN, int(round(size))))}
+
+
+def validate_grid(parsed, messages):
+    if not isinstance(parsed, dict) or "grid" not in parsed: return
+    g = parsed["grid"]
+    def push(m): messages.append({"level": "error", "widget": -1, "key": "grid", "message": m})
+    if not isinstance(g, dict): push("grid must be an object"); return
+    if "enabled" in g and not isinstance(g["enabled"], bool): push("grid.enabled must be true or false")
+    if "size" in g and not (isinstance(g["size"], int) and not isinstance(g["size"], bool) and GRID_MIN <= g["size"] <= GRID_MAX):
+        push(f"grid.size must be an integer {GRID_MIN}..{GRID_MAX}")
+
+
 def validate_config(parsed, registry):
     messages = []
+    validate_grid(parsed, messages)
     if isinstance(parsed, list): widgets = parsed
     elif isinstance(parsed, dict) and isinstance(parsed.get("widgets"), list): widgets = parsed["widgets"]
     else:
@@ -532,6 +559,10 @@ def cmd_write(args, ctx):
     raw = None
     if os.path.exists(ctx["path"]):
         with open(ctx["path"]) as fh: raw = fh.read()
+        try:
+            for k, v in settings_of(json.loads(strip_jsonc(raw))).items(): parsed.setdefault(k, v)
+        except json.JSONDecodeError:
+            pass
     write_config(ctx["path"], parsed, raw)
     print(f"wrote {ctx['path']}: {len(widgets)} widget(s)"); return 0
 
@@ -547,6 +578,30 @@ def cmd_editor(args, ctx):
     """Toggle the editor panel inside the running shell."""
     rc = subprocess.call(["omarchy-shell", "shell", "toggle", PLUGIN_ID, "{}"])
     return 0 if rc == 0 else 2
+
+
+# ---------------------------------------------------------------- grid
+def cmd_grid(args, ctx):
+    try:
+        parsed, raw = read_config(ctx["path"])
+    except ValueError as e:
+        print(f"ERROR   {e}", file=sys.stderr); return 1
+    if parsed is None: parsed = {"version": 1, "widgets": []}
+    if isinstance(parsed, list): parsed = {"version": 1, "widgets": parsed}
+    grid = grid_of(parsed)
+    v = (args.value or "").strip().lower()
+    if not v:
+        print(f"grid {'on' if grid['enabled'] else 'off'}, size {grid['size']} px"); return 0
+    if v in ("on", "off", "toggle"):
+        grid["enabled"] = (v == "on") if v != "toggle" else not grid["enabled"]
+    else:
+        try: size = int(v)
+        except ValueError: print("grid: expected on | off | toggle | <size px>", file=sys.stderr); return 2
+        if not GRID_MIN <= size <= GRID_MAX: print(f"grid size must be {GRID_MIN}..{GRID_MAX}", file=sys.stderr); return 2
+        grid["size"] = size; grid["enabled"] = True
+    parsed["grid"] = grid
+    write_config(ctx["path"], parsed, raw if raw else None)
+    print(f"grid {'on' if grid['enabled'] else 'off'}, size {grid['size']} px"); return 0
 
 
 # ---------------------------------------------------------------- presets
@@ -607,10 +662,12 @@ def cmd_preset(args, ctx):
             print(f"preset '{name}' is invalid: " + "; ".join(p["problems"]), file=sys.stderr); return 1
         parsed, _ = read_config(p["path"])
         widgets, _ = validate_config(parsed, ctx["registry"])
-        raw = None
+        raw = None; settings = {}
         if os.path.exists(ctx["path"]):
             with open(ctx["path"]) as fh: raw = fh.read()
-        write_config(ctx["path"], {"version": 1, "widgets": widgets}, raw)
+            try: settings = settings_of(json.loads(strip_jsonc(raw)))
+            except json.JSONDecodeError: settings = {}
+        write_config(ctx["path"], dict(settings, version=1, widgets=widgets), raw)
         print(f"applied preset '{name}' ({len(widgets)} widget(s)) to {ctx['path']}" + (" (previous layout in desktop-widgets.json.bak)" if raw is not None else ""))
         return 0
     if op == "save":
@@ -800,6 +857,7 @@ def build_parser():
     sub.add_parser("list", help="list widgets").set_defaults(fn=cmd_list)
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
+    gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
     pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")
     pr.add_argument("--json", action="store_true"); pr.add_argument("--force", action="store_true"); pr.add_argument("--description", default="")

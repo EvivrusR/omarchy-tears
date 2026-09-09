@@ -154,6 +154,21 @@ don't want it. Omarchy 4.0.3's `omarchy plugin enable … right` / `omarchy bar 
 do not place it because the plugin is already listed under `plugins[]` for its
 service — a known quirk of mixed-kind plugins.
 
+### Grid snapping
+
+Off by default. `desktop-widgets grid on|off|<px>` (4..256, default 24) or the **Grid**
+button in the editor (click toggles, right-click doubles, middle-click halves). While
+arrange mode is armed, `G` toggles it and `[` / `]` resize it; the grid shows as dots.
+Snapping applies to the offsets from the chosen corner, so `x: 48` stays 48 on a
+24-grid and existing layouts never drift. Stored at the top of the config:
+
+```json
+{ "version": 1, "grid": { "enabled": true, "size": 24 }, "widgets": [ … ] }
+```
+
+Top-level keys other than `widgets` are settings; every writer (CLI, editor, presets)
+carries them over, and presets never contain them.
+
 ## Presets (whole-screen layouts)
 
 A preset is a complete `widgets[]` layout you apply in one go. Three ship with the
@@ -273,6 +288,7 @@ desktop-widgets status
 | `move <index> [--corner C] [--x N] [--y N]` | reposition |
 | `enable <index>` / `disable <index>` | keep the widget in the file but hide it |
 | `remove <index>` / `duplicate <index>` | delete, or copy into the next slot |
+| `grid [on\|off\|toggle\|<px>]` | show or set arrange-mode grid snapping |
 | `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
 | `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |
 | `preset save <name> [--force] [--description …]` / `remove <name>` | keep the current layout as a preset of yours / delete one of yours |

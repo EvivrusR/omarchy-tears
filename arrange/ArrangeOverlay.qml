@@ -46,8 +46,34 @@ PanelWindow {
     anchors.fill: parent
     focus: true
     Keys.onPressed: function(e) {
+      var g = win.service.grid
       if (e.key === Qt.Key_Escape || e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { win.service.setArranging(false); e.accepted = true }
+      else if (e.key === Qt.Key_G) { win.service.setGrid(!g.enabled, g.size); win.service.touchArrange(); e.accepted = true }
+      else if (e.key === Qt.Key_BracketLeft) { win.service.setGrid(true, Math.max(4, g.size / 2)); win.service.touchArrange(); e.accepted = true }
+      else if (e.key === Qt.Key_BracketRight) { win.service.setGrid(true, Math.min(256, g.size * 2)); win.service.touchArrange(); e.accepted = true }
     }
+  }
+
+  // Grid dots while snapping is on: one Text of "·" rows is far cheaper than
+  // thousands of items, and it never takes input (the MouseArea below does).
+  Text {
+    visible: win.service.grid.enabled
+    readonly property int step: win.service.grid.size
+    readonly property int cols: Math.ceil(win.width / Math.max(4, step)) + 1
+    readonly property int rows: Math.ceil(win.height / Math.max(4, step)) + 1
+    text: {
+      var line = "", i
+      for (i = 0; i < cols; i++) line += "·"
+      var out = []
+      for (i = 0; i < rows; i++) out.push(line)
+      return out.join("\n")
+    }
+    x: -Math.round(fontMetrics.advanceWidth("·") / 2); y: -Math.round(step / 2)
+    color: Util.alpha(Color.accent, 0.35)
+    font.family: "monospace"; font.pixelSize: Math.max(6, Math.round(step / 2))
+    lineHeight: step; lineHeightMode: Text.FixedHeight
+    font.letterSpacing: step - fontMetrics.advanceWidth("·")
+    FontMetrics { id: fontMetrics; font.family: "monospace"; font.pixelSize: Math.max(6, Math.round(win.service.grid.size / 2)) }
   }
 
   Repeater {
@@ -97,7 +123,7 @@ PanelWindow {
       if (!win.drag) return
       var rect = Arrange.moveRect(win.drag.startRect, m.x - win.drag.pressX, m.y - win.drag.pressY, win.width, win.height)
       var d = win.drag; d.rect = rect; win.drag = d
-      win.service.setOverride(d.key, Arrange.placeFor(rect, win.width, win.height))
+      win.service.setOverride(d.key, win.service.snap(Arrange.placeFor(rect, win.width, win.height)))
     }
     onReleased: function(m) {
       if (!win.drag) return
@@ -110,6 +136,6 @@ PanelWindow {
     anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: Style.space(28)
     width: hint.implicitWidth + Style.space(28); height: hint.implicitHeight + Style.space(14)
     radius: Style.cornerRadius; color: Color.popups.background; border.width: 1; border.color: Color.popups.border
-    Text { id: hint; anchors.centerIn: parent; text: "Arrange mode — drag a widget; it snaps to the nearest corner · Esc or Enter to finish"; color: Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.body }
+    Text { id: hint; anchors.centerIn: parent; text: "Arrange mode — drag a widget; it snaps to the nearest corner · G grid " + (win.service.grid.enabled ? "on (" + win.service.grid.size + "px, [ ] resize)" : "off") + " · Esc or Enter to finish"; color: Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.body }
   }
 }
