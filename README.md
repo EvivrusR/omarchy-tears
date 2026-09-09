@@ -121,9 +121,10 @@ Per type:
 - **dock**: a row of app icons that launch on click — the one widget that takes pointer input. It lives on the
   wallpaper like everything else, so it is clickable wherever no window covers it and never reserves space.
   `apps` (desktop-entry ids in order; `desktop-widgets apps` lists them, the editor has a searchable picker fed by
-  the same entries as Omarchy's Apps menu), `iconSize` 40, `spacing` 10, `labels` (names under icons; otherwise a
-  hover tooltip), `hoverScale` 1.2. Defaults to `bottom-center`, `y: 24`, `backdrop: 0.5`. Launches through
-  `uwsm-app -- gtk-launch <id>.desktop`, the way Omarchy's menu does.
+  the same entries as Omarchy's Apps menu), `iconStyle` (`themed` tints every icon in the widget's text colour so
+  any icon set matches the theme; `original` keeps the real icons), `iconSize` 32, `spacing` 8, `labels` (names
+  under icons; otherwise a hover tooltip), `hoverScale` 1.2. Defaults to `bottom-center`, `y: 8`, `backdrop: 0.5`.
+  Launches through `uwsm-app -- gtk-launch <id>.desktop`, the way Omarchy's menu does.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),

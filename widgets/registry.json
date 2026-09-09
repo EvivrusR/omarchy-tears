@@ -806,7 +806,7 @@
       "input": true,
       "defaults": {
         "corner": "bottom-center",
-        "y": 24,
+        "y": 8,
         "backdrop": 0.5
       },
       "omitCommon": [
@@ -821,10 +821,21 @@
           "description": "desktop-entry ids, in order (see `desktop-widgets apps`)"
         },
         {
+          "key": "iconStyle",
+          "type": "enum",
+          "label": "Icon style",
+          "options": [
+            "themed",
+            "original"
+          ],
+          "default": "themed",
+          "description": "themed tints every icon in the widget's text colour so it matches the theme"
+        },
+        {
           "key": "iconSize",
           "type": "integer",
           "label": "Icon size (px)",
-          "default": 40,
+          "default": 32,
           "min": 16,
           "max": 128
         },
@@ -832,7 +843,7 @@
           "key": "spacing",
           "type": "integer",
           "label": "Spacing (px)",
-          "default": 10,
+          "default": 8,
           "min": 0,
           "max": 64
         },
