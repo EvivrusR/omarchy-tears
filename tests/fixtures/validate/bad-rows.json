@@ -1,0 +1,32 @@
+{
+  "config": {
+    "widgets": [
+      {
+        "type": "template",
+        "rows": "nope"
+      },
+      {
+        "type": "template",
+        "rows": [
+          {
+            "kind": "heading"
+          },
+          "str",
+          {
+            "kind": "chart"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "widgets": 2,
+    "errors": 3,
+    "warnings": 0,
+    "messages": [
+      "widget 0: rows must be a list",
+      "widget 1: rows.1 must be an object",
+      "widget 1: rows.2 has unknown kind 'chart'"
+    ]
+  }
+}

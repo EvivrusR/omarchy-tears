@@ -1,0 +1,1 @@
+{"widgets":[{"type":"command","command":"echo '// not a comment' && echo \"/* nor this */\", "}]}

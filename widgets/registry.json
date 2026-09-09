@@ -1,0 +1,312 @@
+{
+  "version": 1,
+  "common": [
+    {
+      "key": "type",
+      "type": "type",
+      "label": "Type",
+      "required": true
+    },
+    {
+      "key": "enabled",
+      "type": "boolean",
+      "label": "Enabled",
+      "default": true
+    },
+    {
+      "key": "corner",
+      "type": "enum",
+      "label": "Corner",
+      "options": [
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right"
+      ],
+      "default": "top-right"
+    },
+    {
+      "key": "x",
+      "type": "integer",
+      "label": "X offset (px)",
+      "default": 48,
+      "min": 0,
+      "max": 8000
+    },
+    {
+      "key": "y",
+      "type": "integer",
+      "label": "Y offset (px)",
+      "default": 48,
+      "min": 0,
+      "max": 8000
+    },
+    {
+      "key": "scale",
+      "type": "number",
+      "label": "Scale",
+      "default": 1,
+      "min": 0.25,
+      "max": 4
+    },
+    {
+      "key": "backdrop",
+      "type": "number",
+      "label": "Backdrop alpha",
+      "default": 0,
+      "min": 0,
+      "max": 1,
+      "description": "Rounded themed card behind the widget; 0 hides it"
+    },
+    {
+      "key": "color",
+      "type": "color",
+      "label": "Text colour",
+      "default": "foreground",
+      "description": "Theme token (foreground, background, accent, muted, urgent) or any colour"
+    },
+    {
+      "key": "mutedColor",
+      "type": "color",
+      "label": "Muted colour",
+      "default": "muted"
+    },
+    {
+      "key": "outline",
+      "type": "color",
+      "label": "Outline colour",
+      "default": "#000000",
+      "description": "Empty disables outline and halo"
+    },
+    {
+      "key": "halo",
+      "type": "number",
+      "label": "Halo strength",
+      "default": 0.7,
+      "min": 0,
+      "max": 1
+    },
+    {
+      "key": "align",
+      "type": "enum",
+      "label": "Text alignment",
+      "options": [
+        "auto",
+        "left",
+        "right"
+      ],
+      "default": "auto"
+    },
+    {
+      "key": "screen",
+      "type": "string",
+      "label": "Screen",
+      "default": "",
+      "description": "Output name from hyprctl monitors; empty means every screen"
+    }
+  ],
+  "types": {
+    "clock": {
+      "displayName": "Clock",
+      "description": "Time with the date beneath.",
+      "fields": [
+        {
+          "key": "timeFormat",
+          "type": "string",
+          "label": "Time format",
+          "default": "HH:mm",
+          "description": "Qt date/time format"
+        },
+        {
+          "key": "dateFormat",
+          "type": "string",
+          "label": "Date format",
+          "default": "dddd d MMMM",
+          "description": "Empty hides the date"
+        }
+      ]
+    },
+    "stats": {
+      "displayName": "System stats",
+      "description": "CPU, memory, disk and battery as bars.",
+      "fields": [
+        {
+          "key": "show",
+          "type": "multi-enum",
+          "label": "Rows",
+          "options": [
+            "cpu",
+            "mem",
+            "disk",
+            "battery"
+          ],
+          "default": [
+            "cpu",
+            "mem",
+            "disk",
+            "battery"
+          ]
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 3,
+          "min": 1,
+          "max": 3600
+        },
+        {
+          "key": "diskPath",
+          "type": "path",
+          "label": "Disk to watch",
+          "default": "/"
+        }
+      ]
+    },
+    "command": {
+      "displayName": "Command output",
+      "description": "Runs a shell command on an interval and shows its output.",
+      "fields": [
+        {
+          "key": "command",
+          "type": "command",
+          "label": "Command",
+          "default": "",
+          "description": "Run with bash -lc"
+        },
+        {
+          "key": "title",
+          "type": "string",
+          "label": "Title",
+          "default": ""
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 60,
+          "min": 1,
+          "max": 86400
+        },
+        {
+          "key": "timeoutSec",
+          "type": "integer",
+          "label": "Timeout (s)",
+          "default": 10,
+          "min": 1,
+          "max": 600
+        },
+        {
+          "key": "maxLines",
+          "type": "integer",
+          "label": "Max lines",
+          "default": 8,
+          "min": 1,
+          "max": 200
+        },
+        {
+          "key": "maxWidth",
+          "type": "integer",
+          "label": "Max width (px)",
+          "default": 420,
+          "min": 40,
+          "max": 4000
+        }
+      ]
+    },
+    "agents": {
+      "displayName": "Agent session",
+      "description": "Current AI-agent session: percent used and when it ends.",
+      "fields": [
+        {
+          "key": "agent",
+          "type": "enum",
+          "label": "Agent",
+          "options": [
+            "claude",
+            "codex"
+          ],
+          "default": "claude"
+        },
+        {
+          "key": "title",
+          "type": "string",
+          "label": "Title override",
+          "default": ""
+        },
+        {
+          "key": "showWeekly",
+          "type": "boolean",
+          "label": "Show weekly window",
+          "default": false
+        },
+        {
+          "key": "timeFormat",
+          "type": "string",
+          "label": "Clock format",
+          "default": "HH:mm"
+        },
+        {
+          "key": "refreshIntervalSec",
+          "type": "integer",
+          "label": "Self refresh (s)",
+          "default": 0,
+          "min": 0,
+          "max": 86400,
+          "description": "0 relies on the bar's Agents widget refresh"
+        }
+      ]
+    },
+    "template": {
+      "displayName": "Template",
+      "description": "Rows rendered from a command's JSON output with {placeholders}.",
+      "fields": [
+        {
+          "key": "command",
+          "type": "command",
+          "label": "Command",
+          "default": "",
+          "description": "Should print a JSON object; plain text is available as {output} and {lines.N}"
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Refresh (s)",
+          "default": 60,
+          "min": 1,
+          "max": 86400
+        },
+        {
+          "key": "timeoutSec",
+          "type": "integer",
+          "label": "Timeout (s)",
+          "default": 10,
+          "min": 1,
+          "max": 600
+        },
+        {
+          "key": "maxWidth",
+          "type": "integer",
+          "label": "Max width (px)",
+          "default": 420,
+          "min": 40,
+          "max": 4000
+        },
+        {
+          "key": "rows",
+          "type": "rows",
+          "label": "Rows",
+          "default": [],
+          "options": [
+            "heading",
+            "text",
+            "kv",
+            "bar",
+            "spacer"
+          ],
+          "description": "Each row: kind + its keys; text/label/value take {placeholders}"
+        }
+      ]
+    }
+  }
+}

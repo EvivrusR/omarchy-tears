@@ -1,0 +1,35 @@
+{
+  "config": {
+    "widgets": [
+      {
+        "type": "template",
+        "command": "echo '{}'",
+        "rows": [
+          {
+            "kind": "heading",
+            "text": "X"
+          },
+          {
+            "kind": "kv",
+            "label": "a",
+            "value": "{a}"
+          },
+          {
+            "kind": "bar",
+            "label": "b",
+            "value": "{b}",
+            "max": "{c}"
+          },
+          {
+            "kind": "spacer"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "widgets": 1,
+    "errors": 0,
+    "warnings": 0
+  }
+}

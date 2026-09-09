@@ -1,0 +1,9 @@
+{
+  "config": { "version": 1, "widgets": [
+    { "type": "clock", "corner": "top-right", "x": 48, "y": 64, "color": "#F99957" },
+    { "type": "stats", "corner": "bottom-left", "show": ["cpu", "mem"] },
+    { "type": "command", "corner": "bottom-right", "title": "UPTIME", "command": "uptime -p" },
+    { "type": "agents", "corner": "top-left", "agent": "claude" }
+  ] },
+  "expect": { "widgets": 4, "errors": 0, "warnings": 0 }
+}
