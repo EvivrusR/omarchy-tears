@@ -13,7 +13,8 @@ WidgetCard {
   readonly property int iconSize: Math.round(Number(config.iconSize || 32) * scale_)
   readonly property int gap: Math.round(Number(config.spacing !== undefined ? config.spacing : 8) * scale_)
   readonly property bool labels: config.labels === true
-  readonly property bool themed: String(config.iconStyle || "themed") !== "original"
+  readonly property string iconStyle: String(config.iconStyle || "themed")
+  readonly property bool themed: iconStyle !== "original"     // themed and mono both go through the effect
   readonly property real hoverScale: Math.max(1, Math.min(2, Number(config.hoverScale || 1.2)))
   pad: Math.round(Style.space(8) * scale_)
   // Room for the hover tooltip above the card, inside our own window.
@@ -60,13 +61,15 @@ WidgetCard {
             opacity: mouse.pressed ? 0.6 : 1
             Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
           }
-          // Themed: the icon's luminance, recoloured in the text colour (like a glyph).
+          // themed: the icon's luminance recoloured in the text colour (like a glyph);
+          // mono: the same luminance in plain greys.
           MultiEffect {
             visible: root.themed
             anchors.fill: img
             source: img
-            colorization: 1.0
+            colorization: root.iconStyle === "mono" ? 0 : 1.0
             colorizationColor: root.textColor
+            saturation: root.iconStyle === "mono" ? -1 : 0
             scale: img.scale; opacity: img.opacity
           }
           MouseArea {

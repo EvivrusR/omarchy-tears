@@ -826,10 +826,11 @@
           "label": "Icon style",
           "options": [
             "themed",
+            "mono",
             "original"
           ],
           "default": "themed",
-          "description": "themed tints every icon in the widget's text colour so it matches the theme"
+          "description": "bar-wide: themed = tinted in the widget's text colour, mono = decolourised greys, original = the real icons"
         },
         {
           "key": "iconSize",
