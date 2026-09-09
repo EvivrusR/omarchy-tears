@@ -7,6 +7,10 @@
     { "type": "clock", "corner": "top-right", "x": 48, "y": 64,
       "timeFormat": "HH:mm", "dateFormat": "dddd d MMMM" },
 
+    // A translucent panel *behind* the stats block ("z": -1 puts it further back).
+    { "type": "shape", "corner": "bottom-left", "x": 24, "y": 24, "z": -1,
+      "kind": "rect", "width": 300, "height": 150, "fill": "background", "alpha": 0.4, "borderWidth": 1, "borderAlpha": 0.5 },
+
     // CPU / memory / disk / battery bars.
     { "type": "stats", "corner": "bottom-left", "x": 48, "y": 48,
       "show": ["cpu", "mem", "disk", "battery"], "intervalSec": 3 },

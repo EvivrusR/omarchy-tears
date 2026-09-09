@@ -66,9 +66,10 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, or any drop-in |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, or any drop-in |
 | `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right` |
 | `x`, `y` | 48 | offset from that corner, px |
+| `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
 | `enabled` | true | `false` hides the widget without deleting it |
 | `screen` | all | output name (`hyprctl monitors`) to draw on |
 | `scale` | 1 | font and spacing multiplier |
@@ -92,6 +93,18 @@ Per type:
   `~/.local/state/omarchy/agents/usage/<agent>.json`, which the bar widget refreshes every 15 minutes.
   If you disable the bar widget, set `refreshIntervalSec` (e.g. 900) so this widget triggers
   `omarchy-agent-usage-update --limits-only` itself.
+- **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
+  widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
+  in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
+  `fill` (`background`) + `alpha` (0.4), `border` (`accent`) + `borderWidth` (0 = none) + `borderAlpha` (1),
+  `radius` (12, rect/line only), `shadow` (0..1, soft dark drop shadow; when on, the widget's box grows by
+  24·scale px on every side so the shadow has room, and `x`/`y` place that box). Text keys (`color`,
+  `outline`, `halo`, `align`, `backdrop`) do not apply and warn if set. Shapes never take input.
+
+  ```json
+  { "type": "shape", "corner": "top-left", "x": 24, "y": 36, "z": -1,
+    "width": 320, "height": 232, "fill": "background", "alpha": 0.45, "borderWidth": 1, "borderAlpha": 0.5 }
+  ```
 
 ## Editor panel
 

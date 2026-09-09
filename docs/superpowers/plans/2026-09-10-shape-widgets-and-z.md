@@ -1,6 +1,6 @@
 # Desktop Widgets: Shape widgets + `z` stacking — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** A `shape` widget type that is pure form — a translucent panel, divider line, pill or circle laid *behind* a group of widgets — plus a common `z` key so "behind" is explicit and shown in the editor.
 
@@ -12,9 +12,9 @@
 
 | Task | State | Commit | Notes |
 |---|---|---|---|
-| 1 Registry: `z` common field, `shape` type, `omitCommon`; `stackOrder`; JS + Python + fixtures | todo | | |
-| 2 `ShapeWidget.qml`, `WidgetCard.pad` overridable, Service loader + z-ordered placements; live check | todo | | |
-| 3 Editor list shows z; CLI `list` summary for shape + z; example layout; docs (README, CHANGELOG, vault); ROADMAP #4 closed | todo | | |
+| 1 Registry: `z` common field, `shape` type, `omitCommon`; `stackOrder`; JS + Python + fixtures | done | 0cf26a2 | 44 node / 26 python |
+| 2 `ShapeWidget.qml`, `WidgetCard.pad` overridable, Service loader + z-ordered placements; live check | done | 478d2eb | live panel z −1 listed first in `hyprctl layers`; 7 widgets loaded clean; shadow margin = 24·scale |
+| 3 Editor list shows z; CLI `list` summary for shape + z; example layout; docs (README, CHANGELOG, vault); ROADMAP #4 closed | done | (this commit) | visual screenshot owed when an empty workspace is showing |
 
 **How to resume:** read this file; run `node --test tests/*.test.js` and `python3 -m unittest discover -s tests -p 'test_*.py'`; continue at the first task not done. Code changes need `omarchy restart shell`; validate `manifest.json` first. Check stacking with `hyprctl layers | grep -A12 'level 1'` (bottom-first).
 
@@ -27,18 +27,18 @@
 ---
 
 ### Task 1: Registry + engines
-- [ ] `widgets/registry.json`: common `z`; `shape` type (`kind` rect|pill|circle|line, `width`, `height`, `fill`, `alpha`, `border`, `borderWidth`, `borderAlpha`, `radius`, `shadow`) with `omitCommon`.
-- [ ] `widgets/Registry.js` + `widgets/EditorModel.js` + `bin/desktop-widgets`: `fieldsFor` honours `omitCommon`; `Registry.stackOrder(widgets)`.
-- [ ] Tests: `tests/registry.test.js` (omitCommon, stackOrder), fixture `tests/fixtures/validate/shape.json` (bad kind, stray `color` warns, z out of range).
+- [x] `widgets/registry.json`: common `z`; `shape` type (`kind` rect|pill|circle|line, `width`, `height`, `fill`, `alpha`, `border`, `borderWidth`, `borderAlpha`, `radius`, `shadow`) with `omitCommon`.
+- [x] `widgets/Registry.js` + `widgets/EditorModel.js` + `bin/desktop-widgets`: `fieldsFor` honours `omitCommon`; `Registry.stackOrder(widgets)`.
+- [x] Tests: `tests/registry.test.js` (omitCommon, stackOrder), fixture `tests/fixtures/validate/shape.json` (bad kind, stray `color` warns, z out of range).
 
 ### Task 2: Shell
-- [ ] `widgets/WidgetCard.qml`: `pad` becomes a plain property.
-- [ ] `widgets/ShapeWidget.qml`.
-- [ ] `Service.qml`: `placements` ordered by `stackOrder`; Loader case `shape`.
-- [ ] Live: add a panel behind the stats/agents column on envi-laptop with `z: -1`, restart shell, `hyprctl layers` shows it first; screenshot.
+- [x] `widgets/WidgetCard.qml`: `pad` becomes a plain property.
+- [x] `widgets/ShapeWidget.qml`.
+- [x] `Service.qml`: `placements` ordered by `stackOrder`; Loader case `shape`.
+- [x] Live: add a panel behind the stats/agents column on envi-laptop with `z: -1`, restart shell, `hyprctl layers` shows it first; screenshot.
 
 ### Task 3: Editor, CLI, docs
-- [ ] `Editor.qml` list row: `z ±n` chip when z ≠ 0.
-- [ ] CLI `summarize` for shape; `list` shows `z` when non-zero.
-- [ ] `desktop-widgets.example.jsonc`: a 40% `background` panel behind the stats block, `z: -1`.
-- [ ] README (Shape section + z under common keys), CHANGELOG, vault guide, ROADMAP backlog #4 → done.
+- [x] `Editor.qml` list row: `z ±n` chip when z ≠ 0.
+- [x] CLI `summarize` for shape; `list` shows `z` when non-zero.
+- [x] `desktop-widgets.example.jsonc`: a 40% `background` panel behind the stats block, `z: -1`.
+- [x] README (Shape section + z under common keys), CHANGELOG, vault guide, ROADMAP backlog #4 → done.
