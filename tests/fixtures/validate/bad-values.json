@@ -1,0 +1,18 @@
+{
+  "config": { "widgets": [
+    { "type": "clock", "corner": "middle", "x": "far", "scale": 9, "bogus": 1 },
+    { "type": "stats", "show": ["cpu", "gpu"], "intervalSec": 0 },
+    { "type": "agents", "agent": "gemini", "showWeekly": "yes" }
+  ] },
+  "expect": { "widgets": 3, "errors": 7, "warnings": 1,
+    "messages": [
+      "widget 0: corner must be one of top-left, top-right, bottom-left, bottom-right",
+      "widget 0: x must be an integer",
+      "widget 0: scale must be at most 4",
+      "widget 0: unknown key 'bogus'",
+      "widget 1: show has unknown option 'gpu'",
+      "widget 1: intervalSec must be at least 1",
+      "widget 2: agent must be one of claude, codex",
+      "widget 2: showWeekly must be true or false"
+    ] }
+}

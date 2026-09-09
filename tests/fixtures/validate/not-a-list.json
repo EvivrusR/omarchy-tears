@@ -1,0 +1,5 @@
+{
+  "config": { "widgets": { "type": "clock" } },
+  "expect": { "widgets": null, "errors": 1, "warnings": 0,
+    "messages": [ "config must be a list of widgets or an object with a widgets list" ] }
+}

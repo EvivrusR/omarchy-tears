@@ -1,0 +1,4 @@
+{ "widgets": [
+  { "type": "clock" }, // last one
+  // nothing after
+] }

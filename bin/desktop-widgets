@@ -1,0 +1,738 @@
+#!/usr/bin/env python3
+"""desktop-widgets — manage ~/.config/omarchy/desktop-widgets.json for the
+homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
+
+Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
+two engines identical."""
+import argparse, json, os, re, shutil, subprocess, sys, tempfile
+
+PLUGIN_ID = "homelab.desktop-widgets"
+HERE = os.path.dirname(os.path.realpath(__file__))
+PLUGIN_DIR = os.path.dirname(HERE)
+REGISTRY_PATH = os.path.join(PLUGIN_DIR, "widgets", "registry.json")
+CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"]
+DROPIN_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
+EXAMPLE_DIR = os.path.join(PLUGIN_DIR, "examples", "drop-in", "hello")
+
+
+def config_path():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "omarchy", "desktop-widgets.json")
+
+
+# ----------------------------------------------------------------- jsonc
+def strip_jsonc(text):
+    out, i, n, in_str = [], 0, len(text), False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1]); i += 2; continue
+            if c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; out.append(c); i += 1; continue
+        if text.startswith("//", i):
+            while i < n and text[i] != "\n": i += 1
+            continue
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2); i = n if end < 0 else end + 2; continue
+        if c == ",":
+            k = i + 1
+            while True:
+                while k < n and text[k].isspace(): k += 1
+                if text.startswith("//", k):
+                    while k < n and text[k] != "\n": k += 1
+                elif text.startswith("/*", k):
+                    end = text.find("*/", k + 2); k = n if end < 0 else end + 2
+                else:
+                    break
+            if k < n and text[k] in "}]":
+                i += 1; continue
+        out.append(c); i += 1
+    return "".join(out)
+
+
+def has_comments(text):
+    return strip_jsonc(text) != text
+
+
+# -------------------------------------------------------------- registry
+def dropin_dir():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "omarchy", "desktop-widgets.d")
+
+
+def load_dropins(directory, builtin_types):
+    """Drop-in widget types: <dir>/<name>/type.json + Widget.qml. Returns (types, problems)."""
+    types, problems = {}, []
+    if not os.path.isdir(directory): return types, problems
+    for name in sorted(os.listdir(directory)):
+        d = os.path.join(directory, name)
+        if not os.path.isdir(d): continue
+        if not DROPIN_NAME.match(name): problems.append(f"{name}: name must match {DROPIN_NAME.pattern}"); continue
+        if name in builtin_types: problems.append(f"{name}: shadows a built-in type, ignored"); continue
+        tj, qml = os.path.join(d, "type.json"), os.path.join(d, "Widget.qml")
+        if not os.path.exists(tj): problems.append(f"{name}: missing type.json"); continue
+        if not os.path.exists(qml): problems.append(f"{name}: missing Widget.qml"); continue
+        try:
+            with open(tj) as fh: spec = json.loads(strip_jsonc(fh.read()))
+        except (OSError, ValueError) as e:
+            problems.append(f"{name}: type.json: {e}"); continue
+        if not isinstance(spec, dict) or not isinstance(spec.get("fields", []), list):
+            problems.append(f"{name}: type.json must be an object with a fields list"); continue
+        types[name] = {"displayName": spec.get("displayName", name), "description": spec.get("description", ""),
+                       "fields": spec.get("fields", []), "source": qml, "dropIn": True}
+    return types, problems
+
+
+def load_registry(path=REGISTRY_PATH, dropins=True):
+    with open(path) as fh:
+        reg = json.load(fh)
+    if dropins:
+        extra, problems = load_dropins(dropin_dir(), reg.get("types", {}))
+        reg["types"].update(extra)
+        if problems: reg["problems"] = problems
+    return reg
+
+
+def fields_for(type_, registry):
+    t = registry.get("types", {}).get(type_)
+    if not t: return []
+    return list(registry.get("common", [])) + list(t.get("fields", []))
+
+
+def apply_defaults(entry, registry):
+    out = json.loads(json.dumps(entry))
+    for f in fields_for(str(out.get("type", "")), registry):
+        if f["key"] not in out and "default" in f:
+            out[f["key"]] = json.loads(json.dumps(f["default"]))
+    return out
+
+
+def _num(v):
+    return str(int(v)) if float(v).is_integer() else str(v)
+
+
+def _check_field(f, value, push):
+    t = f["type"]
+    if t == "boolean":
+        if not isinstance(value, bool): push("error", f"{f['key']} must be true or false")
+    elif t == "integer":
+        if isinstance(value, bool) or not isinstance(value, int):
+            push("error", f"{f['key']} must be an integer"); return
+        if "min" in f and value < f["min"]: push("error", f"{f['key']} must be at least {_num(f['min'])}")
+        if "max" in f and value > f["max"]: push("error", f"{f['key']} must be at most {_num(f['max'])}")
+    elif t == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            push("error", f"{f['key']} must be a number"); return
+        if "min" in f and value < f["min"]: push("error", f"{f['key']} must be at least {_num(f['min'])}")
+        if "max" in f and value > f["max"]: push("error", f"{f['key']} must be at most {_num(f['max'])}")
+    elif t == "enum":
+        if not isinstance(value, str) or value not in f.get("options", []):
+            push("error", f"{f['key']} must be one of {', '.join(f.get('options', []))}")
+    elif t == "multi-enum":
+        if not isinstance(value, list):
+            push("error", f"{f['key']} must be a list"); return
+        for v in value:
+            if v not in f.get("options", []): push("error", f"{f['key']} has unknown option '{v}'")
+    elif t == "rows":
+        if not isinstance(value, list):
+            push("error", f"{f['key']} must be a list"); return
+        for r, row in enumerate(value):
+            if not isinstance(row, dict):
+                push("error", f"{f['key']}.{r} must be an object"); continue
+            if str(row.get("kind")) not in f.get("options", []):
+                push("error", f"{f['key']}.{r} has unknown kind '{row.get('kind')}'")
+    elif t in ("string", "path", "command", "color"):
+        if not isinstance(value, str): push("error", f"{f['key']} must be a string")
+
+
+def validate_config(parsed, registry):
+    messages = []
+    if isinstance(parsed, list): widgets = parsed
+    elif isinstance(parsed, dict) and isinstance(parsed.get("widgets"), list): widgets = parsed["widgets"]
+    else:
+        messages.append({"level": "error", "widget": -1, "key": "", "message": "config must be a list of widgets or an object with a widgets list"})
+        return None, messages
+    for i, entry in enumerate(widgets):
+        def push(level, message, key="", i=i): messages.append({"level": level, "widget": i, "key": key, "message": message})
+        if not isinstance(entry, dict): push("error", "widget must be an object"); continue
+        type_ = entry.get("type")
+        if type_ in (None, ""): push("error", "missing type", "type"); continue
+        if not isinstance(type_, str) or type_ not in registry.get("types", {}):
+            push("error", f"unknown type '{type_}'", "type"); continue
+        known = set()
+        for f in fields_for(type_, registry):
+            known.add(f["key"])
+            if f["type"] == "type" or f["key"] not in entry: continue
+            _check_field(f, entry[f["key"]], lambda level, message, key=f["key"]: push(level, message, key))
+        for k in entry:
+            if k not in known: push("warning", f"unknown key '{k}'", k)
+    return widgets, messages
+
+
+# ---------------------------------------------------------------- config io
+def read_config(path):
+    """Returns (parsed, raw_text). parsed is None when the file is missing;
+    raises ValueError on a parse error."""
+    if not os.path.exists(path): return None, ""
+    with open(path) as fh: raw = fh.read()
+    try:
+        return json.loads(strip_jsonc(raw)), raw
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{path}: {e}")
+
+
+def print_messages(messages, stream):
+    for m in messages:
+        where = f"widget {m['widget']}: " if m["widget"] >= 0 else ""
+        print(f"{m['level'].upper():7} {where}{m['message']}", file=stream)
+
+
+def summarize(entry, registry):
+    t = entry.get("type", "?")
+    bits = {
+        "clock": lambda e: e.get("timeFormat", "HH:mm"),
+        "stats": lambda e: ",".join(e.get("show", ["cpu", "mem", "disk", "battery"])),
+        "command": lambda e: (e.get("title") or e.get("command") or "")[:40],
+        "agents": lambda e: e.get("agent", "claude"),
+        "template": lambda e: next((str(r.get("text", "")) for r in e.get("rows", []) if isinstance(r, dict) and r.get("kind") == "heading"), f"{len(e.get('rows', []))} rows"),
+    }
+    return bits.get(t, lambda e: "")(entry)
+
+
+# ---------------------------------------------------------------- commands
+def cmd_path(args, ctx):
+    print(ctx["path"]); return 0
+
+
+def cmd_validate(args, ctx):
+    path = args.file or ctx["path"]
+    try:
+        parsed, raw = read_config(path)
+    except ValueError as e:
+        print(f"ERROR   {e}", file=sys.stderr); return 1
+    if parsed is None:
+        print(f"no config at {path}"); return 0
+    widgets, messages = validate_config(parsed, ctx["registry"])
+    print_messages(messages, sys.stderr)
+    errors = sum(m["level"] == "error" for m in messages)
+    if errors: print(f"{errors} error(s)", file=sys.stderr); return 1
+    print(f"ok: {len(widgets)} widget(s), {sum(m['level'] == 'warning' for m in messages)} warning(s)")
+    return 0
+
+
+def cmd_list(args, ctx):
+    try:
+        parsed, raw = read_config(ctx["path"])
+    except ValueError as e:
+        print(f"ERROR   {e}", file=sys.stderr); return 1
+    if parsed is None: print(f"no config at {ctx['path']}"); return 0
+    widgets, messages = validate_config(parsed, ctx["registry"])
+    if widgets is None: print_messages(messages, sys.stderr); return 1
+    for i, e in enumerate(widgets):
+        if not isinstance(e, dict): print(f"{i:<2} ERR      not an object"); continue
+        bad = any(m["level"] == "error" and m["widget"] == i for m in messages)
+        state = "ERR" if bad else ("off" if e.get("enabled") is False else "on ")
+        t = str(e.get("type", "?"))
+        print(f"{i:<2} {t:<8} {state} {str(e.get('corner', 'top-right')):<12} {e.get('x', 48):>4},{e.get('y', 48):<4} {summarize(e, ctx['registry'])}")
+    return 0
+
+
+def cmd_types(args, ctx):
+    reg = ctx["registry"]
+    if args.type:
+        if args.type not in reg["types"]: print(f"unknown type '{args.type}'", file=sys.stderr); return 2
+        t = reg["types"][args.type]
+        print(f"{args.type} — {t.get('displayName', args.type)}{' (drop-in: ' + t['source'] + ')' if t.get('dropIn') else ''}: {t.get('description', '')}")
+        for f in fields_for(args.type, reg):
+            if f["type"] == "type": continue
+            extra = []
+            if "default" in f: extra.append(f"default {json.dumps(f['default'])}")
+            if "options" in f: extra.append(("one of " if f["type"] == "enum" else "any of ") + ", ".join(f["options"]))
+            if "min" in f or "max" in f: extra.append(f"{_num(f['min']) if 'min' in f else ''}..{_num(f['max']) if 'max' in f else ''}")
+            print(f"  {f['key']:<20} {f['type']:<11} {'; '.join(extra)}" + (f"  — {f['description']}" if f.get("description") else ""))
+        return 0
+    for name, t in reg["types"].items():
+        tag = " (drop-in)" if t.get("dropIn") else ""
+        print(f"{name:<9} {t.get('displayName', name) + tag:<26} {t.get('description', '')}")
+    for pr in reg.get("problems", []):
+        print(f"PROBLEM drop-in {pr}", file=sys.stderr)
+    return 0
+
+
+def cmd_registry(args, ctx):
+    """Print the merged registry (built-in + drop-ins); --json is what the service consumes."""
+    if args.json:
+        print(json.dumps(ctx["registry"])); return 0
+    for name, t in ctx["registry"]["types"].items():
+        print(f"{name:<9} {'drop-in' if t.get('dropIn') else 'built-in':<9} {len(t.get('fields', []))} field(s)" + (f"  {t['source']}" if t.get("source") else ""))
+    for pr in ctx["registry"].get("problems", []):
+        print(f"PROBLEM drop-in {pr}", file=sys.stderr)
+    return 0
+
+
+def cmd_new(args, ctx):
+    """Scaffold a drop-in widget type from examples/drop-in/hello."""
+    name = args.name
+    if not DROPIN_NAME.match(name): print(f"name must match {DROPIN_NAME.pattern}", file=sys.stderr); return 2
+    if name in load_registry(dropins=False)["types"]: print(f"'{name}' is a built-in type; pick another name", file=sys.stderr); return 2
+    d = os.path.join(dropin_dir(), name)
+    if os.path.exists(d) and not args.force: print(f"{d} exists (use --force to overwrite)", file=sys.stderr); return 2
+    os.makedirs(d, exist_ok=True)
+    for fn in ("type.json", "Widget.qml"):
+        with open(os.path.join(EXAMPLE_DIR, fn)) as src: text = src.read()
+        text = text.replace("Hello", name.replace("-", " ").title()).replace("hello", name)
+        with open(os.path.join(d, fn), "w") as dst: dst.write(text)
+    print(f"created {d}")
+    print(f"  edit type.json (fields) and Widget.qml, then:  desktop-widgets add {name}")
+    print("  (editing an existing drop-in later needs: omarchy restart shell)")
+    return 0
+
+
+# ---------------------------------------------------------------- writing
+def write_config(path, data, raw_before):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if raw_before is not None and os.path.exists(path):
+        with open(path + ".bak", "w") as fh: fh.write(raw_before)
+    fd, tmp = tempfile.mkstemp(prefix=".desktop-widgets.", dir=os.path.dirname(path))
+    with os.fdopen(fd, "w") as fh:
+        fh.write(json.dumps(data, indent=2) + "\n")
+    os.replace(tmp, path)
+
+
+def parse_value(field, text):
+    t = field["type"] if field else "string"
+    if t == "integer":
+        try: return int(text)
+        except ValueError: raise ValueError(f"{field['key']} must be an integer")
+    if t == "number":
+        try:
+            v = float(text); return int(v) if v.is_integer() else v
+        except ValueError: raise ValueError(f"{field['key']} must be a number")
+    if t == "boolean":
+        low = text.strip().lower()
+        if low in ("true", "yes", "1", "on"): return True
+        if low in ("false", "no", "0", "off"): return False
+        raise ValueError(f"{field['key']} must be true or false")
+    if t == "multi-enum":
+        return [s.strip() for s in text.split(",") if s.strip()]
+    return text
+
+
+def load_for_write(ctx, force, create=False):
+    """Returns (document, widgets, raw). raw is None when the file did not exist."""
+    try:
+        parsed, raw = read_config(ctx["path"])
+    except ValueError as e:
+        raise ValueError(f"ERROR   {e}")
+    if parsed is None:
+        if not create: raise ValueError(f"no config at {ctx['path']} (add a widget first)")
+        doc = {"version": 1, "widgets": []}
+        return doc, doc["widgets"], None
+    if raw and has_comments(raw) and not force:
+        raise ValueError("config contains comments, which a write would drop — edit it with `desktop-widgets edit`, or pass --force")
+    if isinstance(parsed, list): parsed = {"version": 1, "widgets": parsed}
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("widgets"), list):
+        raise ValueError("config must be a list of widgets or an object with a widgets list")
+    return parsed, parsed["widgets"], raw
+
+
+def apply_sets(entry, pairs, registry):
+    fields = {f["key"]: f for f in fields_for(entry.get("type", ""), registry)}
+    for pair in pairs:
+        if "=" not in pair: raise ValueError(f"expected key=value, got '{pair}'")
+        key, text = pair.split("=", 1)
+        entry[key] = parse_value(fields.get(key), text)
+
+
+def index_arg(widgets, index):
+    if index < 0 or index >= len(widgets): raise ValueError(f"no widget {index} (have {len(widgets)})")
+    return widgets[index]
+
+
+def commit(ctx, doc, raw):
+    """Validate the whole document, then write. Any error aborts the write."""
+    _, messages = validate_config(doc, ctx["registry"])
+    errors = [m for m in messages if m["level"] == "error"]
+    if errors:
+        print_messages(errors, sys.stderr); print("not written", file=sys.stderr); return 1
+    write_config(ctx["path"], doc, raw)
+    print(f"wrote {ctx['path']}" + (f" (previous copy in {os.path.basename(ctx['path'])}.bak)" if raw is not None else ""))
+    return 0
+
+
+def mutate(args, ctx, fn, create=False):
+    try:
+        doc, widgets, raw = load_for_write(ctx, getattr(args, "force", False), create=create)
+        fn(doc, widgets)
+    except ValueError as e:
+        print(str(e), file=sys.stderr); return 1 if "must be" in str(e) else 2
+    return commit(ctx, doc, raw)
+
+
+def cmd_add(args, ctx):
+    if args.type not in ctx["registry"]["types"]:
+        print(f"unknown type '{args.type}' (see `desktop-widgets types`)", file=sys.stderr); return 2
+    def fn(doc, widgets):
+        entry = {"type": args.type}
+        if args.corner: entry["corner"] = args.corner
+        if args.x is not None: entry["x"] = args.x
+        if args.y is not None: entry["y"] = args.y
+        apply_sets(entry, args.set or [], ctx["registry"])
+        widgets.append(entry)
+    return mutate(args, ctx, fn, create=True)
+
+
+def cmd_set(args, ctx):
+    def fn(doc, widgets):
+        apply_sets(index_arg(widgets, args.index), args.pairs, ctx["registry"])
+    return mutate(args, ctx, fn)
+
+
+def cmd_move(args, ctx):
+    def fn(doc, widgets):
+        e = index_arg(widgets, args.index)
+        if args.corner: e["corner"] = args.corner
+        if args.x is not None: e["x"] = args.x
+        if args.y is not None: e["y"] = args.y
+    return mutate(args, ctx, fn)
+
+
+def cmd_enabled(value):
+    def run(args, ctx):
+        def fn(doc, widgets):
+            e = index_arg(widgets, args.index)
+            if value: e.pop("enabled", None)
+            else: e["enabled"] = False
+        return mutate(args, ctx, fn)
+    return run
+
+
+def cmd_remove(args, ctx):
+    def fn(doc, widgets):
+        index_arg(widgets, args.index); widgets.pop(args.index)
+    return mutate(args, ctx, fn)
+
+
+def cmd_duplicate(args, ctx):
+    def fn(doc, widgets):
+        e = index_arg(widgets, args.index); widgets.insert(args.index + 1, json.loads(json.dumps(e)))
+    return mutate(args, ctx, fn)
+
+
+# ---------------------------------------------------------------- plugin state
+def shell_json_path():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "omarchy", "shell.json")
+
+
+def plugin_enabled(path=None):
+    path = path or shell_json_path()
+    try:
+        with open(path) as fh: doc = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return any(isinstance(p, dict) and p.get("id") == PLUGIN_ID for p in doc.get("plugins", []) or [])
+
+
+def run_quiet(cmd):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def cmd_status(args, ctx):
+    enabled = plugin_enabled()
+    if args.enabled: return 0 if enabled else 1
+    print(f"plugin:  {PLUGIN_ID} — {'enabled' if enabled else 'disabled'} (shell.json)")
+    print(f"config:  {ctx['path']}")
+    try:
+        parsed, raw = read_config(ctx["path"])
+        if parsed is None: print("         missing")
+        else:
+            widgets, messages = validate_config(parsed, ctx["registry"])
+            errs = sum(m["level"] == "error" for m in messages)
+            print(f"         {len(widgets) if widgets else 0} widget(s), {errs} error(s), {sum(m['level'] == 'warning' for m in messages)} warning(s)")
+            print_messages([m for m in messages if m["level"] == "error"], sys.stdout)
+    except ValueError as e:
+        print(f"         parse error: {e}")
+    layers = run_quiet(["hyprctl", "layers"]).count("homelab-desktop-widgets")
+    print(f"layers:  {layers} window(s) on screen")
+    log = run_quiet(["journalctl", "--user", "_COMM=quickshell", "-n", "400", "--no-pager"])
+    lines = [l for l in log.splitlines() if "desktop-widgets" in l and "Local plugin changed" not in l][-5:]
+    if lines:
+        print("log:")
+        for l in lines: print("  " + l.split("]: ", 1)[-1])
+    return 0
+
+
+def cmd_toggle(args, ctx):
+    action = "disable" if plugin_enabled() else "enable"
+    rc = subprocess.call(["omarchy", "plugin", action, PLUGIN_ID])
+    return 0 if rc == 0 else 2
+
+
+def cmd_edit(args, ctx):
+    path = ctx["path"]
+    raw = None
+    if os.path.exists(path):
+        with open(path) as fh: raw = fh.read()   # even if broken: let the user fix it
+    else:
+        raw = '{\n  "version": 1,\n  "widgets": [\n  ]\n}\n'
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or (shutil.which("nano") and "nano") or "vi"
+    fd, tmp = tempfile.mkstemp(prefix="desktop-widgets.", suffix=".jsonc")
+    with os.fdopen(fd, "w") as fh: fh.write(raw)
+    try:
+        rc = subprocess.call(f"{editor} {tmp}", shell=True)
+        if rc != 0: print(f"editor exited {rc}; not saved", file=sys.stderr); return 2
+        with open(tmp) as fh: text = fh.read()
+    finally:
+        try: os.unlink(tmp)
+        except OSError: pass
+    if text == raw: print("no changes"); return 0
+    try:
+        parsed = json.loads(strip_jsonc(text)); widgets, messages = validate_config(parsed, ctx["registry"])
+        errors = [m for m in messages if m["level"] == "error"]
+    except json.JSONDecodeError as e:
+        errors = [{"level": "error", "widget": -1, "key": "", "message": f"parse error: {e}"}]
+    if errors:
+        print_messages(errors, sys.stderr)
+        if not sys.stdin.isatty(): print("not saved (invalid, no terminal to confirm)", file=sys.stderr); return 1
+        if input("save anyway? [y/N] ").strip().lower() != "y": print("not saved", file=sys.stderr); return 1
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if os.path.exists(path):
+        with open(path + ".bak", "w") as fh: fh.write(raw)
+    fd, tmp2 = tempfile.mkstemp(prefix=".desktop-widgets.", dir=os.path.dirname(path))
+    with os.fdopen(fd, "w") as fh: fh.write(text)
+    os.replace(tmp2, path)
+    print(f"wrote {path}"); return 0
+
+
+def cmd_write(args, ctx):
+    """Replace the whole config with a document read from stdin (the editor
+    panel's single write path). Validates first; keeps .bak; atomic."""
+    text = sys.stdin.read()
+    try:
+        parsed = json.loads(strip_jsonc(text))
+    except json.JSONDecodeError as e:
+        print(f"ERROR   parse error: {e}", file=sys.stderr); return 1
+    if isinstance(parsed, list): parsed = {"version": 1, "widgets": parsed}
+    widgets, messages = validate_config(parsed, ctx["registry"])
+    errors = [m for m in messages if m["level"] == "error"]
+    if errors:
+        print_messages(errors, sys.stderr); print("not written", file=sys.stderr); return 1
+    parsed.setdefault("version", 1)
+    raw = None
+    if os.path.exists(ctx["path"]):
+        with open(ctx["path"]) as fh: raw = fh.read()
+    write_config(ctx["path"], parsed, raw)
+    print(f"wrote {ctx['path']}: {len(widgets)} widget(s)"); return 0
+
+
+def cmd_arrange(args, ctx):
+    """Arm/disarm drag-to-place in the running shell."""
+    out = run_quiet(["omarchy-shell", "desktop-widgets", "arrange", args.state])
+    print(out.strip() or "no answer from the shell (plugin enabled?)")
+    return 0 if out.strip() in ("on", "off") else 2
+
+
+def cmd_editor(args, ctx):
+    """Toggle the editor panel inside the running shell."""
+    rc = subprocess.call(["omarchy-shell", "shell", "toggle", PLUGIN_ID, "{}"])
+    return 0 if rc == 0 else 2
+
+
+# ---------------------------------------------------------------- install
+MENU_BEGIN, MENU_END = "  // desktop-widgets:begin", "  // desktop-widgets:end"
+LUA_BEGIN, LUA_END = "-- desktop-widgets:begin", "-- desktop-widgets:end"
+EXAMPLE_CONFIG = os.path.join(PLUGIN_DIR, "desktop-widgets.example.jsonc")
+PLUGIN_BIN = "$HOME/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets"
+
+
+def _config_base():
+    return os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+
+
+def menu_path(): return os.path.join(_config_base(), "omarchy", "extensions", "omarchy-menu.jsonc")
+def bindings_path(): return os.path.join(_config_base(), "hypr", "bindings.lua")
+def link_path(): return os.path.join(os.path.expanduser("~"), ".local", "bin", "desktop-widgets")
+
+
+def _backup_once(path):
+    bak = path + ".desktop-widgets.bak"
+    if os.path.exists(path) and not os.path.exists(bak): shutil.copyfile(path, bak)
+
+
+def _strip_block(text, begin, end):
+    """Remove every begin..end marker block (whole lines)."""
+    out, skipping, changed = [], False, False
+    for line in text.splitlines(keepends=True):
+        st = line.strip()
+        if st == begin.strip():
+            skipping = True; changed = True
+            if out and out[-1].strip() == "": out.pop()   # the blank line install added before the block
+            continue
+        if st == end.strip(): skipping = False; continue
+        if not skipping: out.append(line)
+    return "".join(out), changed
+
+
+def menu_rows(parent):
+    b = PLUGIN_BIN
+    pre = f"{parent}.widgets" if parent else "widgets"
+    rows = [
+        (pre, {"icon": "\U000f14a2", "label": "Desktop widgets", "aliases": ["widgets"], "description": "Wallpaper-layer widgets"}),
+        (pre + ".editor", {"icon": "\U000f03eb", "label": "Editor", "action": "omarchy-shell shell toggle homelab.desktop-widgets '{}'", "description": "native editor panel"}),
+        (pre + ".arrange", {"icon": "\U000f01be", "label": "Arrange on desktop", "checked": "[[ \"$(omarchy-shell desktop-widgets state 2>/dev/null)\" == *'\"arranging\":true'* ]]", "action": "omarchy-shell desktop-widgets arrange toggle", "description": "drag widgets into place; Esc finishes"}),
+        (pre + ".edit", {"icon": "\uf044", "label": "Edit config", "action": f"omarchy-launch-terminal {b} edit", "description": "$EDITOR, validated on save"}),
+        (pre + ".status", {"icon": "\U000f02fc", "label": "Status", "action": f"omarchy-launch-floating-terminal-with-presentation \"{b} status; read -n1 -s -r -p 'press any key'\""}),
+        (pre + ".enabled", {"icon": "\U000f0521", "label": "Enabled", "checked": f"{b} status --enabled", "action": f"{b} toggle"}),
+        (pre + ".restart", {"icon": "\uf021", "label": "Restart shell", "action": "omarchy-restart-shell", "description": "needed after code changes"}),
+    ]
+    return rows
+
+
+def install_menu(path, report):
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh: fh.write("{\n}\n")
+    with open(path) as fh: text = fh.read()
+    if "desktop-widgets:begin" in text or '"household.widgets"' in text or '"widgets":' in text:
+        report("menu rows", "already"); return
+    household = re.search(r'"household"\s*:', text) is not None
+    rows = menu_rows("household" if household else "")
+    open_idx = text.find("{")
+    if open_idx < 0: report("menu rows", "skipped (no JSON object in file)"); return
+    rest = strip_jsonc(text[open_idx + 1:]).strip()
+    empty = rest.startswith("}")
+    lines = [MENU_BEGIN]
+    for i, (key, row) in enumerate(rows):
+        comma = "" if (empty and i == len(rows) - 1) else ","
+        lines.append(f"  {json.dumps(key)}: {json.dumps(row, ensure_ascii=False)}{comma}")
+    lines.append(MENU_END)
+    _backup_once(path)
+    with open(path, "w") as fh: fh.write(text[:open_idx + 1] + "\n" + "\n".join(lines) + "\n" + text[open_idx + 1:].lstrip("\n"))
+    report("menu rows", "done" + ("" if household else " (top-level 'widgets' submenu)"))
+
+
+def install_bindings(path, report):
+    if not os.path.exists(path): report("keybinds", "skipped (no bindings.lua)"); return
+    with open(path) as fh: text = fh.read()
+    wanted = [("SUPER + ALT + W", "Desktop widgets editor", "omarchy-shell shell toggle homelab.desktop-widgets '{}'"),
+              ("SUPER + ALT + A", "Desktop widgets: arrange", "omarchy-shell desktop-widgets arrange toggle")]
+    stripped, _ = _strip_block(text, LUA_BEGIN, LUA_END)
+    lines = [f'o.bind("{chord}", "{desc}", "{action}")' for chord, desc, action in wanted if chord not in stripped]
+    if "desktop-widgets:begin" in text or not lines: report("keybinds", "already"); return
+    _backup_once(path)
+    with open(path, "w") as fh: fh.write(text.rstrip("\n") + "\n\n" + LUA_BEGIN + "\n" + "\n".join(lines) + "\n" + LUA_END + "\n")
+    report("keybinds", "done" if len(lines) == 2 else "done (one chord already taken, added the other)")
+
+
+def install_link(report):
+    link = link_path(); target = os.path.join(PLUGIN_DIR, "bin", "desktop-widgets")
+    os.makedirs(os.path.dirname(link), exist_ok=True)
+    if os.path.islink(link) and os.path.realpath(link) == os.path.realpath(target): report("~/.local/bin link", "already"); return
+    if os.path.exists(link) or os.path.islink(link): report("~/.local/bin link", "skipped (something else is there)"); return
+    os.symlink(target, link); report("~/.local/bin link", "done")
+
+
+def cmd_init(args, ctx):
+    path = ctx["path"]
+    if os.path.exists(path) and not args.force:
+        print(f"{path} exists (use --force to replace it; a .bak is kept)", file=sys.stderr); return 2
+    with open(EXAMPLE_CONFIG) as fh: text = fh.read()
+    raw = None
+    if os.path.exists(path):
+        with open(path) as fh: raw = fh.read()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    if raw is not None:
+        with open(path + ".bak", "w") as fh: fh.write(raw)
+    fd, tmp = tempfile.mkstemp(prefix=".desktop-widgets.", dir=os.path.dirname(path))
+    with os.fdopen(fd, "w") as fh: fh.write(text)
+    os.replace(tmp, path)
+    print(f"wrote the example layout to {path}"); return 0
+
+
+def cmd_install(args, ctx):
+    def report(what, state): print(f"  {what:<20} {state}")
+    print("desktop-widgets install")
+    if not args.no_link: install_link(report)
+    if not args.no_menu: install_menu(menu_path(), report)
+    if not args.no_keys: install_bindings(bindings_path(), report)
+    if not args.no_init:
+        if os.path.exists(ctx["path"]): report("config", "already")
+        else:
+            class A: force = False
+            cmd_init(A(), ctx); report("config", "done (example layout)")
+    print("  next: `hyprctl reload`, then SUPER+ALT+W opens the editor; `omarchy plugin enable homelab.desktop-widgets` if not yet enabled")
+    return 0
+
+
+def cmd_uninstall(args, ctx):
+    def report(what, state): print(f"  {what:<20} {state}")
+    print("desktop-widgets uninstall")
+    link = link_path(); target = os.path.join(PLUGIN_DIR, "bin", "desktop-widgets")
+    if os.path.islink(link) and os.path.realpath(link) == os.path.realpath(target): os.unlink(link); report("~/.local/bin link", "removed")
+    else: report("~/.local/bin link", "not ours / absent")
+    for label, path, b, e in (("menu rows", menu_path(), MENU_BEGIN, MENU_END), ("keybinds", bindings_path(), LUA_BEGIN, LUA_END)):
+        if not os.path.exists(path): report(label, "absent"); continue
+        with open(path) as fh: text = fh.read()
+        new, changed = _strip_block(text, b, e)
+        if changed:
+            with open(path, "w") as fh: fh.write(new)
+            report(label, "removed")
+        else: report(label, "none of ours")
+    if args.purge:
+        for pth in (ctx["path"], ctx["path"] + ".bak"):
+            if os.path.exists(pth): os.unlink(pth)
+        shutil.rmtree(dropin_dir(), ignore_errors=True); report("config + drop-ins", "removed")
+    else: report("config", "kept (use --purge to remove it and drop-ins)")
+    print("  the plugin itself: omarchy plugin remove homelab.desktop-widgets")
+    return 0
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="desktop-widgets", description="Manage the desktop-widgets config.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("path", help="print the config path").set_defaults(fn=cmd_path)
+    ini = sub.add_parser("init", help="write the example layout as your config"); ini.add_argument("--force", action="store_true"); ini.set_defaults(fn=cmd_init)
+    ins = sub.add_parser("install", help="symlink the CLI, add menu rows and keybinds, write the example layout"); [ins.add_argument(f, action="store_true") for f in ("--no-link", "--no-menu", "--no-keys", "--no-init")]; ins.set_defaults(fn=cmd_install)
+    uni = sub.add_parser("uninstall", help="remove what install added (config kept unless --purge)"); uni.add_argument("--purge", action="store_true"); uni.set_defaults(fn=cmd_uninstall)
+    v = sub.add_parser("validate", help="validate the config (exit 1 on errors)"); v.add_argument("file", nargs="?"); v.set_defaults(fn=cmd_validate)
+    sub.add_parser("list", help="list widgets").set_defaults(fn=cmd_list)
+    t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
+    rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
+    n = sub.add_parser("new", help="scaffold a drop-in widget type under ~/.config/omarchy/desktop-widgets.d/"); n.add_argument("name"); n.add_argument("--force", action="store_true"); n.set_defaults(fn=cmd_new)
+    def idx(sp):
+        sp.add_argument("index", type=int); sp.add_argument("--force", action="store_true", help="write even if the file has comments")
+    a = sub.add_parser("add", help="append a widget"); a.add_argument("type"); a.add_argument("--corner", choices=CORNERS); a.add_argument("--x", type=int); a.add_argument("--y", type=int); a.add_argument("--set", action="append", metavar="key=value"); a.add_argument("--force", action="store_true"); a.set_defaults(fn=cmd_add)
+    s = sub.add_parser("set", help="set key=value pairs on a widget"); idx(s); s.add_argument("pairs", nargs="+", metavar="key=value"); s.set_defaults(fn=cmd_set)
+    m = sub.add_parser("move", help="change corner/offset"); idx(m); m.add_argument("--corner", choices=CORNERS); m.add_argument("--x", type=int); m.add_argument("--y", type=int); m.set_defaults(fn=cmd_move)
+    e = sub.add_parser("enable", help="enable a widget"); idx(e); e.set_defaults(fn=cmd_enabled(True))
+    d = sub.add_parser("disable", help="disable a widget (kept in the file)"); idx(d); d.set_defaults(fn=cmd_enabled(False))
+    r = sub.add_parser("remove", help="delete a widget"); idx(r); r.set_defaults(fn=cmd_remove)
+    u = sub.add_parser("duplicate", help="copy a widget to the next slot"); idx(u); u.set_defaults(fn=cmd_duplicate)
+    st = sub.add_parser("status", help="plugin state, config health, windows on screen"); st.add_argument("--enabled", action="store_true", help="exit 0 if the plugin is enabled"); st.set_defaults(fn=cmd_status)
+    sub.add_parser("toggle", help="enable or disable the plugin via omarchy plugin").set_defaults(fn=cmd_toggle)
+    sub.add_parser("edit", help="open the config in $EDITOR, validate on save, keep .bak").set_defaults(fn=cmd_edit)
+    ar = sub.add_parser("arrange", help="arm/disarm drag-to-place on the desktop"); ar.add_argument("state", nargs="?", default="toggle", choices=["on", "off", "toggle"]); ar.set_defaults(fn=cmd_arrange)
+    sub.add_parser("editor", help="open/close the editor panel in the shell").set_defaults(fn=cmd_editor)
+    sub.add_parser("write", help="replace the config with a JSON document from stdin (validated, .bak kept)").set_defaults(fn=cmd_write)
+    return p
+
+
+def main(argv=None):
+    try:
+        args = build_parser().parse_args(argv)
+    except SystemExit as e:
+        return int(e.code or 0)
+    ctx = {"path": config_path(), "registry": load_registry()}
+    return args.fn(args, ctx)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

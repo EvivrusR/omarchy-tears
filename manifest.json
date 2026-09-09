@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "homelab.desktop-widgets",
+  "name": "Desktop widgets",
+  "version": "0.4.0",
+  "author": "EvivrusR",
+  "license": "MIT",
+  "description": "Theme-aware widgets (clock, system stats, command output) drawn on the wallpaper layer, configured from ~/.config/omarchy/desktop-widgets.json.",
+  "kinds": [
+    "service",
+    "panel",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "panel": "Editor.qml",
+    "barWidget": "Companion.qml"
+  },
+  "barWidget": {
+    "displayName": "Desktop widgets (arrange)",
+    "description": "Shows an icon only while arrange mode is armed; click to finish, right-click for the editor.",
+    "category": "Desktop",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {},
+    "schema": []
+  }
+}

@@ -1,0 +1,30 @@
+{
+  // Desktop widgets — copy to ~/.config/omarchy/desktop-widgets.json and prune.
+  // Comments and trailing commas are fine. `desktop-widgets types <type>` lists every key.
+  "version": 1,
+  "widgets": [
+    // Big clock, top-right. Text gets a black outline + halo by default so it reads on any wallpaper.
+    { "type": "clock", "corner": "top-right", "x": 48, "y": 64,
+      "timeFormat": "HH:mm", "dateFormat": "dddd d MMMM" },
+
+    // CPU / memory / disk / battery bars.
+    { "type": "stats", "corner": "bottom-left", "x": 48, "y": 48,
+      "show": ["cpu", "mem", "disk", "battery"], "intervalSec": 3 },
+
+    // Any command's output. Non-zero exit keeps the last good text and marks a red "!".
+    { "type": "command", "corner": "bottom-right", "x": 48, "y": 48,
+      "title": "UPTIME", "command": "uptime -p", "intervalSec": 60, "maxLines": 4 },
+
+    // Current Claude session: % used, meter, "ends in 3h 27m · 22:59".
+    { "type": "agents", "corner": "top-left", "x": 48, "y": 64, "agent": "claude" },
+
+    // Template: any command that prints JSON, rendered as rows with {placeholders}.
+    { "type": "template", "corner": "bottom-right", "x": 48, "y": 140, "intervalSec": 10,
+      "command": "python3 -c 'import json,os; l=os.getloadavg(); print(json.dumps({\"l1\":l[0],\"l5\":l[1],\"cpus\":os.cpu_count()}))'",
+      "rows": [
+        { "kind": "heading", "text": "LOAD" },
+        { "kind": "kv",  "label": "1 / 5 min", "value": "{l1|fixed:2} / {l5|fixed:2}" },
+        { "kind": "bar", "label": "1m", "value": "{l1}", "text": "{l1|fixed:2}", "max": "{cpus}", "warnAt": 0.9 },
+      ] },
+  ],
+}
