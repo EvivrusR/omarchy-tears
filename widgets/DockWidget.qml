@@ -42,7 +42,8 @@ WidgetCard {
         id: cell
         required property var modelData
         readonly property string appId: String(modelData)
-        readonly property var entry: root.entryFor(appId)
+        // Re-evaluates once the desktop entries have loaded (they may lag the widget).
+        readonly property var entry: { DesktopEntries.applications.values; return root.entryFor(appId) }
         readonly property string appName: entry ? String(entry.name) : appId
         spacing: Math.round(Style.space(3) * root.scale_)
         Item {
@@ -66,7 +67,6 @@ WidgetCard {
             source: img
             colorization: 1.0
             colorizationColor: root.textColor
-            saturation: -1
             scale: img.scale; opacity: img.opacity
           }
           MouseArea {
