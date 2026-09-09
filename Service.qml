@@ -244,8 +244,11 @@ Item {
   readonly property var placements: {
     var out = []
     var screens = Quickshell.screens
-    for (var i = 0; i < widgets.length; i++) {
-      var w = widgets[i]
+    // Creation order is stacking order (compositor stacks same-layer surfaces
+    // by creation), so walk the widgets by ascending z.
+    var order = Registry.stackOrder(widgets)
+    for (var o = 0; o < order.length; o++) {
+      var w = widgets[order[o]]
       for (var s = 0; s < screens.length; s++) {
         if (w.screen && String(w.screen) !== screens[s].name) continue
         out.push({ widget: w, screen: screens[s], key: w.__index + "@" + screens[s].name })
@@ -314,6 +317,7 @@ Item {
             case "command": return "widgets/CommandWidget.qml"
             case "agents": return "widgets/AgentsWidget.qml"
             case "template": return "widgets/TemplateWidget.qml"
+            case "shape": return "widgets/ShapeWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""

@@ -1,7 +1,9 @@
 // Pure helpers for the editor panel. Node-tested; imported by Editor.qml.
 function fieldsFor(type, registry) {
   if (!registry || !registry.types || !registry.types[type]) return []
-  return (registry.common || []).concat(registry.types[type].fields || [])
+  var t = registry.types[type]
+  var omit = t.omitCommon || []
+  return (registry.common || []).filter(function(f) { return omit.indexOf(f.key) === -1 }).concat(t.fields || [])
 }
 
 function fieldDef(entry, key, registry) {

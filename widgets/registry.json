@@ -42,6 +42,15 @@
       "max": 8000
     },
     {
+      "key": "z",
+      "type": "integer",
+      "label": "Stacking (z)",
+      "default": 0,
+      "min": -100,
+      "max": 100,
+      "description": "Lower sits further back; equal z keeps list order"
+    },
+    {
       "key": "scale",
       "type": "number",
       "label": "Scale",
@@ -305,6 +314,106 @@
             "spacer"
           ],
           "description": "Each row: kind + its keys; text/label/value take {placeholders}"
+        }
+      ]
+    },
+    "shape": {
+      "displayName": "Shape",
+      "description": "Pure form: a translucent panel, divider, pill or circle to lay behind other widgets.",
+      "omitCommon": [
+        "color",
+        "mutedColor",
+        "outline",
+        "halo",
+        "align",
+        "backdrop"
+      ],
+      "fields": [
+        {
+          "key": "kind",
+          "type": "enum",
+          "label": "Kind",
+          "options": [
+            "rect",
+            "pill",
+            "circle",
+            "line"
+          ],
+          "default": "rect"
+        },
+        {
+          "key": "width",
+          "type": "integer",
+          "label": "Width (px)",
+          "default": 320,
+          "min": 1,
+          "max": 8000,
+          "description": "Circle: diameter; line: length. Multiplied by scale"
+        },
+        {
+          "key": "height",
+          "type": "integer",
+          "label": "Height (px)",
+          "default": 200,
+          "min": 1,
+          "max": 8000,
+          "description": "Line: thickness; ignored by circle"
+        },
+        {
+          "key": "fill",
+          "type": "color",
+          "label": "Fill",
+          "default": "background",
+          "description": "Theme token or any colour"
+        },
+        {
+          "key": "alpha",
+          "type": "number",
+          "label": "Fill alpha",
+          "default": 0.4,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "border",
+          "type": "color",
+          "label": "Border colour",
+          "default": "accent"
+        },
+        {
+          "key": "borderWidth",
+          "type": "integer",
+          "label": "Border width (px)",
+          "default": 0,
+          "min": 0,
+          "max": 64,
+          "description": "0 = no border"
+        },
+        {
+          "key": "borderAlpha",
+          "type": "number",
+          "label": "Border alpha",
+          "default": 1,
+          "min": 0,
+          "max": 1
+        },
+        {
+          "key": "radius",
+          "type": "integer",
+          "label": "Corner radius (px)",
+          "default": 12,
+          "min": 0,
+          "max": 500,
+          "description": "rect and line; pill and circle are always round"
+        },
+        {
+          "key": "shadow",
+          "type": "number",
+          "label": "Shadow",
+          "default": 0,
+          "min": 0,
+          "max": 1,
+          "description": "Soft dark shadow strength; 0 = none"
         }
       ]
     }

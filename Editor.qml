@@ -216,6 +216,7 @@ Item {
                       MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: root.toggleEnabled(index) }
                     }
                     Text { text: Model.entryLabel(modelData, root.registry); color: index === root.selected ? Color.menu.selectedText : Color.popups.text; font.family: Style.font.family; font.pixelSize: Style.font.body; Layout.fillWidth: true; elide: Text.ElideRight }
+                    Text { visible: Number(modelData.z || 0) !== 0; text: "z " + Number(modelData.z || 0); color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
                     Text { text: String(modelData.corner || "top-right"); color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
                     Text { visible: Model.firstError(root.messages, index) !== ""; text: "⚠"; color: Color.urgent; font.pixelSize: Style.font.body }
                   }

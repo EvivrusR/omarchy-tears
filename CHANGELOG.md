@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Shape widgets**: `shape` type (rect / pill / circle / line; fill + alpha, border, radius, soft shadow) for translucent panels and dividers behind other widgets.
+- **`z` stacking** on every widget: windows are created in ascending `z`, so "behind" is explicit; the editor list shows `z` when it is not 0, and `desktop-widgets list` prefixes the summary with `z=n`.
+- Registry types may declare `omitCommon` to drop common keys they do not use (the editor form and `types` help follow; stray keys warn).
 - Menu rows now install under Omarchy's own **Style** submenu by default (it exists on every install); `desktop-widgets install --menu-parent <id>` for anywhere else. Existing hand-placed `*.widgets` rows are left alone.
 
 ## 0.4.0 — 2026-09-10

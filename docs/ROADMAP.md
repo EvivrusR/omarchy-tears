@@ -240,14 +240,14 @@ honest), then the mirror and tag. About an evening on top of Phase 3.
    kind into `plugins[]` expectations), and a checklist for a PR. Estimate:
    an evening, mostly distilling the plans under `docs/superpowers/`.
 
-3. **Menu home: Style, not Household.** (Michael, 2026-09-10.) The *Desktop
+3. **Menu home: Style, not Household.** (Michael, 2026-09-10.) **DONE 2026-09-10** (`feat/style-menu`). The *Desktop
    widgets* submenu belongs under Omarchy's own **Style** menu (which exists
    on every install) rather than Michael's Household submenu. Change
    `desktop-widgets install` to insert `style.widgets.*` rows by default
    (Style is a default submenu, so no "household exists?" branch), move
    Michael's rows on envi-laptop, update README/vault. Half an hour.
 
-4. **Shape widgets for contrast and form.** (Michael, 2026-09-10.) Today each
+4. **Shape widgets for contrast and form.** (Michael, 2026-09-10.) **DONE 2026-09-10** — plan `docs/superpowers/plans/2026-09-10-shape-widgets-and-z.md`. Today each
    widget can only draw a card behind *itself* (`backdrop` alpha). Add a
    `shape` widget type that is pure form: `kind` (`rect`, `circle`, `line`,
    `pill`), `width`/`height`, `fill` (theme token or colour) + `alpha`,

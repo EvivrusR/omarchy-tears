@@ -10,7 +10,7 @@ Item {
 
   readonly property real scale_: Math.max(0.25, Number(config.scale || 1))
   readonly property real backdrop: Math.max(0, Math.min(1, Number(config.backdrop || 0)))
-  readonly property int pad: Math.round(Style.space(12) * scale_)
+  property int pad: Math.round(Style.space(12) * scale_)   // widgets may override (shape uses 0)
   readonly property string align: {
     var a = String(config.align || "auto")
     if (a === "left" || a === "right") return a
