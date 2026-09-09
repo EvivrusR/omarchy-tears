@@ -344,6 +344,9 @@ Item {
             case "agents": return "widgets/AgentsWidget.qml"
             case "template": return "widgets/TemplateWidget.qml"
             case "shape": return "widgets/ShapeWidget.qml"
+            case "battery": return "widgets/BatteryWidget.qml"
+            case "sysinfo": return "widgets/SysinfoWidget.qml"
+            case "monitor": return "widgets/MonitorWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""

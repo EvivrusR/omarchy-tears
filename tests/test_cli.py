@@ -255,7 +255,7 @@ class Cli(unittest.TestCase):
 
     def test_shipped_presets_validate(self):
         names = sorted(p.stem for p in (ROOT / "presets").glob("*.jsonc"))
-        self.assertEqual(names, ["column", "dashboard", "minimal"])
+        self.assertEqual(names, ["column", "dashboard", "minimal", "ops"])
         for n in names:
             code, out, err = self.run_cli("validate", str(ROOT / "presets" / f"{n}.jsonc"))
             self.assertEqual(code, 0, f"{n}: {err}")
