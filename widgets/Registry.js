@@ -4,7 +4,23 @@
 
 function fieldsFor(type, registry) {
   if (!registry || !registry.types || !registry.types[type]) return []
-  return (registry.common || []).concat(registry.types[type].fields || [])
+  var t = registry.types[type]
+  var omit = t.omitCommon || []
+  var common = (registry.common || []).filter(function(f) { return omit.indexOf(f.key) === -1 })
+  return common.concat(t.fields || [])
+}
+
+// Indices of `list` in stacking order: ascending z, list order within equal z.
+// Windows are created in this order, and the compositor stacks same-layer
+// surfaces by creation, so lower z ends up further back.
+function stackOrder(list) {
+  var idx = []
+  for (var i = 0; i < (list || []).length; i++) idx.push(i)
+  idx.sort(function(a, b) {
+    var za = Number(list[a] && list[a].z) || 0, zb = Number(list[b] && list[b].z) || 0
+    return za !== zb ? za - zb : a - b
+  })
+  return idx
 }
 
 function clone(v) { return JSON.parse(JSON.stringify(v)) }
@@ -97,4 +113,4 @@ function hasErrors(messages, index) {
   return false
 }
 
-if (typeof module !== "undefined") module.exports = { fieldsFor, applyDefaults, validateConfig, hasErrors }
+if (typeof module !== "undefined") module.exports = { fieldsFor, applyDefaults, validateConfig, hasErrors, stackOrder }

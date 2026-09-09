@@ -55,3 +55,8 @@ test("firstError and dirty", () => {
   assert.equal(M.dirty([{ type: "clock" }], [{ type: "clock" }]), false);
   assert.equal(M.dirty([{ type: "clock", x: 1 }], [{ type: "clock" }]), true);
 });
+
+test("fieldsFor honours omitCommon", () => {
+  const keys = M.fieldsFor("shape", registry).map((x) => x.key);
+  assert.ok(keys.includes("z") && keys.includes("kind") && !keys.includes("color"));
+});

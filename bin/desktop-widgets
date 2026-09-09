@@ -100,7 +100,8 @@ def load_registry(path=REGISTRY_PATH, dropins=True):
 def fields_for(type_, registry):
     t = registry.get("types", {}).get(type_)
     if not t: return []
-    return list(registry.get("common", [])) + list(t.get("fields", []))
+    omit = set(t.get("omitCommon", []))
+    return [f for f in registry.get("common", []) if f["key"] not in omit] + list(t.get("fields", []))
 
 
 def apply_defaults(entry, registry):
@@ -199,8 +200,10 @@ def summarize(entry, registry):
         "command": lambda e: (e.get("title") or e.get("command") or "")[:40],
         "agents": lambda e: e.get("agent", "claude"),
         "template": lambda e: next((str(r.get("text", "")) for r in e.get("rows", []) if isinstance(r, dict) and r.get("kind") == "heading"), f"{len(e.get('rows', []))} rows"),
+        "shape": lambda e: f"{e.get('kind', 'rect')} {e.get('width', 320)}×{e.get('height', 200)} {e.get('fill', 'background')}@{e.get('alpha', 0.4)}",
     }
-    return bits.get(t, lambda e: "")(entry)
+    z = entry.get("z", 0)
+    return (f"z={z} " if isinstance(z, (int, float)) and z != 0 else "") + bits.get(t, lambda e: "")(entry)
 
 
 # ---------------------------------------------------------------- commands

@@ -46,3 +46,20 @@ test("hasErrors is per widget index", () => {
   assert.equal(R.hasErrors(msgs, 1), true);
   assert.equal(R.hasErrors(msgs, 0), false);
 });
+
+test("shape type omits text-only common fields and has its own defaults", () => {
+  const keys = R.fieldsFor("shape", registry).map((x) => x.key);
+  assert.ok(keys.includes("corner") && keys.includes("z") && keys.includes("kind") && keys.includes("fill"));
+  for (const k of ["color", "mutedColor", "outline", "halo", "align", "backdrop"]) assert.ok(!keys.includes(k), k + " should be omitted");
+  const e = R.applyDefaults({ type: "shape" }, registry);
+  assert.equal(e.kind, "rect"); assert.equal(e.fill, "background"); assert.equal(e.alpha, 0.4); assert.equal(e.z, 0);
+  assert.equal(e.color, undefined);
+  assert.equal(R.applyDefaults({ type: "clock" }, registry).z, 0);
+});
+
+test("stackOrder sorts by z then keeps list order", () => {
+  const list = [{ type: "clock", z: 2 }, { type: "shape", z: -1 }, { type: "stats" }, { type: "shape", z: -1 }, { type: "agents", z: 0 }];
+  assert.deepEqual(R.stackOrder(list), [1, 3, 2, 4, 0]);
+  assert.deepEqual(R.stackOrder([{ type: "a" }, { type: "b" }]), [0, 1]);
+  assert.deepEqual(R.stackOrder([]), []);
+});

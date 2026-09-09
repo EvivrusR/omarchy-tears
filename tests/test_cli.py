@@ -224,6 +224,17 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
 
+    def test_shape_omits_common_and_list_shows_z(self):
+        keys = [f["key"] for f in dw.fields_for("shape", dw.load_registry())]
+        self.assertIn("kind", keys); self.assertIn("z", keys); self.assertNotIn("color", keys)
+        code, out, err = self.run_cli("add", "shape", "--corner", "top-left", "--set", "z=-1", "--set", "width=300", "--set", "alpha=0.5")
+        self.assertEqual(code, 0, err)
+        code, out, _ = self.run_cli("list")
+        self.assertEqual(code, 0)
+        line = [l for l in out.splitlines() if "shape" in l][0]
+        self.assertIn("z=-1", line); self.assertIn("rect 300", line); self.assertIn("background", line)
+        self.assertEqual(self.run_cli("set", "0", "z=500")[0], 1)
+
     def test_registry_json_and_new_scaffold(self):
         code, out, _ = self.run_cli("registry", "--json")
         self.assertEqual(code, 0); self.assertIn("clock", json.loads(out)["types"])
