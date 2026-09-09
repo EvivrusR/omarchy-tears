@@ -153,7 +153,8 @@ omarchy-shell shell toggle homelab.desktop-widgets '{}'  # what that runs
 - **Add** picks a type; **Duplicate**, **Remove**, **↑/↓** act on the selected row; the dot toggles `enabled`.
 - **Apply on change** (default on) saves after every edit through `desktop-widgets write`, so an invalid value is refused with its reason in the footer and the file is left alone. Off, edits wait for **Save**; **Revert** reloads the file; Esc asks before discarding.
 - Values equal to the registry default are dropped from the file, so it stays minimal.
-- Keys: `j`/`k` select, Tab moves through fields, Ctrl+S saves, Esc closes (or leaves a text field).
+- Keys: `j`/`k` select, Tab moves through fields, Ctrl+S saves, Ctrl+Shift+S saves and closes, Esc closes (or leaves a text field).
+- A successful save is confirmed in the status line (`✓ Saved HH:MM:SS — N widgets written…`, highlighted for a moment) and the Save button reads *Saved ✓*; **Save & close** writes if needed and closes the panel.
 - If the file has comments the panel starts with apply-on-change off and warns that saving from it drops them.
 - Scriptable: `omarchy-shell shell call homelab.desktop-widgets call '{"op":"add","type":"clock"}'`
   (ops: `select{index}`, `add{type}`, `remove`, `duplicate`, `move{dir}`, `set{key,value}`, `toggleEnabled{index}`, `save`, `revert`, `applyOnChange{value}`, `state`).

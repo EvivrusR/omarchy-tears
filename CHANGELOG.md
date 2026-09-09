@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Editor: explicit save confirmation (status line + *Saved ✓* button) and a **Save & close** button (Ctrl+Shift+S); IPC op `saveClose`.
+
 ## 0.5.0 — 2026-09-10
 - **Launcher dock**: `dock` widget (app icons from desktop entries, click to launch; hover zoom/tooltips or labels; bar-wide `iconStyle` themed / mono / original), `desktop-widgets apps`, editor app picker; registry types may declare `input: true` and per-type `defaults` for common keys; `top-center` / `bottom-center` corners.
 - **Weather**: `weather` widget (Open-Meteo, typed place, no location detection, cached, attribution) with an optional full-screen animated ASCII **weather effect** (`effect`, `effectPlacement` back/front/custom, opacity × preset, density, fps).
