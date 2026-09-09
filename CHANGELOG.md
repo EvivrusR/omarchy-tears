@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Weather**: `weather` widget (Open-Meteo, typed place, no location detection, cached, attribution) with an optional full-screen animated ASCII **weather effect** (`effect`, `effectPlacement` back/front/custom, opacity × preset, density, fps).
+- Stacking fix: a z change or a new window that belongs behind an old one now recreates the windows in order (the shell otherwise appends new windows on top).
+- Registry fields may declare `showWhen: {key: value}`; the editor's type header now lands correctly for types with `omitCommon`.
 - **Monitor family**: `battery` (glyph styles, time to empty/full), `sysinfo` (fastfetch-style block with logo or custom ASCII art), `monitor` (cpu/mem/gpu/temp/load/net rows with filled sparklines, adjustable poll and window); shared sampler `bin/dw-sample`, `bin/dw-sysinfo`; `ops` preset.
 - **Grid snapping** in arrange mode: `desktop-widgets grid on|off|<px>`, Grid button in the editor, `G` / `[` / `]` while armed; top-level config settings (`grid`) are preserved by every writer.
 - **Presets**: `desktop-widgets preset list|show|apply|save|remove`; three shipped (`minimal`, `dashboard`, `column`), yours under `~/.config/omarchy/desktop-widgets.presets/`; **Presets…** dropdown in the editor.

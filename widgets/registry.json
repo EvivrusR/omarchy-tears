@@ -662,6 +662,140 @@
           "default": "urgent"
         }
       ]
+    },
+    "weather": {
+      "displayName": "Weather",
+      "description": "Current conditions and the next hours for a place you type (Open-Meteo, no location detection), with an optional animated ASCII weather effect across the wallpaper.",
+      "omitCommon": [
+        "z"
+      ],
+      "fields": [
+        {
+          "key": "place",
+          "type": "string",
+          "label": "Place",
+          "default": "Tokyo, Japan",
+          "description": "\"City, Country\" — resolved once through Open-Meteo's geocoder and cached"
+        },
+        {
+          "key": "units",
+          "type": "enum",
+          "label": "Units",
+          "options": [
+            "metric",
+            "imperial"
+          ],
+          "default": "metric"
+        },
+        {
+          "key": "refreshMin",
+          "type": "integer",
+          "label": "Refresh (min)",
+          "default": 15,
+          "min": 5,
+          "max": 180
+        },
+        {
+          "key": "layout",
+          "type": "enum",
+          "label": "Layout",
+          "options": [
+            "stacked",
+            "inline"
+          ],
+          "default": "stacked"
+        },
+        {
+          "key": "show",
+          "type": "multi-enum",
+          "label": "Show",
+          "options": [
+            "place",
+            "feels",
+            "humidity",
+            "wind",
+            "hours",
+            "attribution"
+          ],
+          "default": [
+            "place",
+            "feels",
+            "humidity",
+            "wind",
+            "hours",
+            "attribution"
+          ]
+        },
+        {
+          "key": "hours",
+          "type": "integer",
+          "label": "Hours ahead",
+          "default": 6,
+          "min": 0,
+          "max": 12
+        },
+        {
+          "key": "effect",
+          "type": "boolean",
+          "label": "Weather effect",
+          "default": false,
+          "description": "animated ASCII rain / snow / clouds / fog / stars across the whole screen"
+        },
+        {
+          "key": "effectPlacement",
+          "type": "enum",
+          "label": "Effect placement",
+          "options": [
+            "back",
+            "front",
+            "custom"
+          ],
+          "default": "back",
+          "description": "back = behind every widget, front = above them all, custom = use z below"
+        },
+        {
+          "key": "z",
+          "type": "integer",
+          "label": "Effect stacking (z)",
+          "default": 0,
+          "min": -100,
+          "max": 100,
+          "showWhen": {
+            "effectPlacement": "custom"
+          }
+        },
+        {
+          "key": "effectOpacity",
+          "type": "number",
+          "label": "Effect opacity",
+          "default": 0.4,
+          "min": 0,
+          "max": 1,
+          "description": "multiplied by each effect's own preset opacity"
+        },
+        {
+          "key": "effectDensity",
+          "type": "number",
+          "label": "Effect density",
+          "default": 1,
+          "min": 0.2,
+          "max": 3
+        },
+        {
+          "key": "effectFps",
+          "type": "integer",
+          "label": "Effect frame rate",
+          "default": 6,
+          "min": 2,
+          "max": 12
+        },
+        {
+          "key": "effectColor",
+          "type": "color",
+          "label": "Effect colour",
+          "default": "foreground"
+        }
+      ]
     }
   }
 }
