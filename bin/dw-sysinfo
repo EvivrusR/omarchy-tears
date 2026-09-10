@@ -85,6 +85,11 @@ def main(argv):
             out.update(flatten(json.loads(r.stdout)))
         except (OSError, subprocess.SubprocessError, json.JSONDecodeError): pass
     out.setdefault("host", socket.gethostname())
+    # fastfetch names the shell by walking parent processes, which from here is
+    # this script under the shell's Python; prefer the login shell instead.
+    login = os.path.basename(os.environ.get("SHELL") or "")
+    if login and (not out.get("shell") or any(x in out["shell"] for x in ("dw-sysinfo", "python", "quickshell", "omarchy-shell"))):
+        out["shell"] = login
     out["logo"] = logo_lines(logo)
     print(json.dumps(out)); return 0
 

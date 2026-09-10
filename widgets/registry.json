@@ -484,24 +484,63 @@
       "fields": [
         {
           "key": "logo",
-          "type": "string",
-          "label": "Logo",
+          "type": "enum",
+          "label": "Art",
+          "options": [
+            "omarchy",
+            "arch",
+            "arch_small",
+            "linux",
+            "debian",
+            "ubuntu",
+            "fedora",
+            "nixos",
+            "gentoo",
+            "void",
+            "endeavouros",
+            "manjaro",
+            "opensuse",
+            "alpine",
+            "cachyos",
+            "garuda",
+            "mint",
+            "popos",
+            "hyprland",
+            "none",
+            "custom"
+          ],
           "default": "omarchy",
-          "description": "a fastfetch builtin logo name (omarchy, arch, …) or none"
+          "description": "a common fastfetch logo, none, or custom (type any logo name or paste your own art)"
+        },
+        {
+          "key": "logoName",
+          "type": "string",
+          "label": "Logo name",
+          "default": "",
+          "description": "any name from `fastfetch --list-logos`",
+          "showWhen": {
+            "logo": "custom"
+          }
         },
         {
           "key": "art",
-          "type": "string",
+          "type": "text",
           "label": "Custom art",
           "default": "",
-          "description": "your own ASCII art (lines separated by \\n); replaces the logo"
+          "description": "paste ASCII art here (replaces the logo name); monospace, lines kept as typed",
+          "showWhen": {
+            "logo": "custom"
+          }
         },
         {
           "key": "artFile",
           "type": "path",
           "label": "Art file",
           "default": "",
-          "description": "read the art from this text file instead"
+          "description": "or read the art from this text file",
+          "showWhen": {
+            "logo": "custom"
+          }
         },
         {
           "key": "logoPosition",
@@ -861,6 +900,115 @@
           "default": 1.2,
           "min": 1,
           "max": 2
+        }
+      ]
+    },
+    "pet": {
+      "displayName": "Pet",
+      "description": "An animated sprite that reacts to something you choose: your Claude session, the battery, running agents, CPU, memory or GPU. Uses the Hermes / petdex sprite-sheet contract, so any petdex pet or a pet hatched in Hermes drops straight in.",
+      "omitCommon": [
+        "align",
+        "outline",
+        "halo"
+      ],
+      "defaults": {
+        "corner": "bottom-right",
+        "y": 8,
+        "x": 48
+      },
+      "fields": [
+        {
+          "key": "name",
+          "type": "string",
+          "label": "Name",
+          "default": "",
+          "description": "how other pets refer to this one in rules (pets.<name>.state); default: the sheet's folder name"
+        },
+        {
+          "key": "sheet",
+          "type": "path",
+          "label": "Sprite sheet",
+          "default": "",
+          "description": "Path to a spritesheet.webp (192×208 cells, 8×9). Find pets: https://petdex.dev (thousands, download → ~/.config/omarchy/desktop-widgets.pets/<name>/), or hatch one in Hermes with /hatch (lands in ~/.hermes/pets/<slug>/). `desktop-widgets pets` lists every sheet on this machine; the plugin ships examples/pets/hermes-girl."
+        },
+        {
+          "key": "watch",
+          "type": "enum",
+          "label": "Watches",
+          "options": [
+            "claude",
+            "battery",
+            "agents",
+            "cpu",
+            "mem",
+            "gpu",
+            "custom"
+          ],
+          "default": "claude",
+          "description": "what this pet reacts to; custom uses the rules below"
+        },
+        {
+          "key": "rules",
+          "type": "rows",
+          "label": "Rules (custom)",
+          "options": [
+            "when",
+            "on"
+          ],
+          "default": [],
+          "showWhen": {
+            "watch": "custom"
+          },
+          "description": "top-down, first `when` wins; `on` fires a timed beat when its test turns true. Signals: claude.session, claude.weekly, claude.resetInMin, battery.pct/charging/discharging/full, agents.active, cpu, mem, gpu, load, temp, hour. States: idle, running, waving, jumping, failed, waiting, review"
+        },
+        {
+          "key": "size",
+          "type": "integer",
+          "label": "Size (px)",
+          "default": 96,
+          "min": 24,
+          "max": 512,
+          "description": "sprite height; the sheet's 192×208 cell is scaled to this"
+        },
+        {
+          "key": "fps",
+          "type": "integer",
+          "label": "Frame rate",
+          "default": 6,
+          "min": 2,
+          "max": 12
+        },
+        {
+          "key": "bubble",
+          "type": "boolean",
+          "label": "Speech bubble",
+          "default": true,
+          "description": "shows the matched rule's text above the pet"
+        },
+        {
+          "key": "flip",
+          "type": "boolean",
+          "label": "Face left",
+          "default": false
+        },
+        {
+          "key": "intervalSec",
+          "type": "integer",
+          "label": "Check every (s)",
+          "default": 5,
+          "min": 2,
+          "max": 120
+        },
+        {
+          "key": "layers",
+          "type": "rows",
+          "label": "Layers (props / outfits)",
+          "options": [
+            "image",
+            "sheet"
+          ],
+          "default": [],
+          "description": "drawn with the body: image = a static PNG/SVG prop (path, z back|front, x/y offset in cell px, scale); sheet = another sprite sheet in the same atlas that follows the body's row and frame (follow = row to use when it lacks one). `desktop-widgets pets` lists props under ~/.config/omarchy/desktop-widgets.pets/props/"
         }
       ]
     }

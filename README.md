@@ -66,7 +66,7 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, `dock`, or any drop-in |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, `dock`, `pet`, or any drop-in |
 | `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right`, `top-center`, `bottom-center` (centre ignores `x`) |
 | `x`, `y` | 48 | offset from that corner, px |
 | `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
@@ -97,9 +97,11 @@ Per type:
 - **battery**: glyph (`style`: `outline` icon-font battery, `pixel` `[████░]`, or `text`), percent, and time to
   empty or full from the battery's own power draw (`showPercent`, `showTime`, `warnAt` 20 turns it red,
   `intervalSec` 30). Hidden when the machine has no battery.
-- **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo`
-  (any fastfetch builtin name, default `omarchy`, `none` hides), `art` (your own lines, `\n`-separated) or
-  `artFile` (a text file) replace the logo; `logoPosition` (`left`/`above`), `logoColor` (`accent`), `fields`
+- **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo` is a
+  dropdown of common fastfetch logos (`omarchy` default, `arch`, `linux`, `debian`, `ubuntu`, `fedora`, `nixos`, …),
+  `none`, or `custom`, which reveals `logoName` (any name from `fastfetch --list-logos`), `art` (paste your own
+  ASCII art in the editor's multi-line box; from the CLI `--set art="line1\nline2"`) and `artFile` (a text file);
+  pasted art wins over the file, which wins over the name. `logoPosition` (`left`/`above`), `logoColor` (`accent`), `fields`
   (any of os, host, kernel, uptime, packages, shell, wm, cpu, gpu, memory, disk, ip, battery), `title`
   (user@host + rule), `swatches` (theme colour row), `intervalSec` 60. Needs `fastfetch` on PATH (Omarchy ships it).
 - **monitor**: stats over time. `rows` (any of cpu, mem, gpu, temp, load, net-down, net-up), polled every
@@ -125,6 +127,28 @@ Per type:
   any icon set matches the theme; `mono` decolourises them to greys; `original` keeps the real icons), `iconSize` 32, `spacing` 8, `labels` (names
   under icons; otherwise a hover tooltip), `hoverScale` 1.2. Defaults to `bottom-center`, `y: 8`, `backdrop: 0.5`.
   Launches through `uwsm-app -- gtk-launch <id>.desktop`, the way Omarchy's menu does.
+- **pet**: an animated sprite that reacts to something you choose. Uses the **Hermes / petdex sprite-sheet
+  contract** (`spritesheet.webp`, 192×208 cells, 8 columns, one row per state: idle, running, waving,
+  jumping, failed, waiting, review), so any pet from [petdex.dev](https://petdex.dev) or one hatched in
+  [Hermes Agent](https://github.com/NousResearch/hermes-agent) with `/hatch` drops straight in — put it under
+  `~/.config/omarchy/desktop-widgets.pets/<name>/`, or point `sheet` at `~/.hermes/pets/<slug>/spritesheet.webp`;
+  `desktop-widgets pets` lists every sheet on the machine and the plugin ships `examples/pets/hermes-girl`.
+  `watch` picks a ready-made rule set: `claude` (session %, agents at work, reset), `battery`, `agents`, `cpu`,
+  `mem`, `gpu`, or `custom` with your own `rules` (rows of `when`/`on`: a test over the signals, the state to
+  show, an optional `beat` in seconds for `on`, and a `say` bubble text with `{signal}` placeholders). Add one
+  pet per thing you care about. `size` (96 px, any value), `fps` 6, `bubble`, `flip`, `intervalSec` 5. The
+  sprite carries no logic; the rules do, and a blank trailing frame in a row is trimmed the way Hermes does.
+  **Layers**: `layers` rows add props and outfits drawn with the body — `image` (a static PNG/SVG such as
+  the shipped `examples/pets/props/rug.png` and `stool.png`; `z` back/front, `x`/`y` offset in cell px, `scale`)
+  or `sheet` (another sprite sheet in the same atlas, clipped to the body's current row and frame so it never
+  drifts; `follow` names the row to use when it lacks one). The pet's window grows to fit its layers.
+  **Links**: every pet publishes `pets.<name>.state`, `.say` and `.watch` for the others' rules, so
+  `{"kind":"when","if":"pets.jill.state == 'failed'","state":"waiting","say":"jill?!"}` makes one pet react to
+  another (they read the previous tick, so nobody waits on anybody). `name` defaults to the sheet's folder.
+  **Make your own without an image model**: `examples/pets/hanna/generate.py` draws a chibi pet procedurally
+  (pycairo + ImageMagick, pixel look, all nine rows) and a matching outfit sheet on a transparent body
+  (`examples/pets/hanna-jacket`) — copy it, change the colours and poses, run it, and you have a pet plus
+  swappable outfits that stay in lock-step.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
@@ -153,7 +177,8 @@ omarchy-shell shell toggle homelab.desktop-widgets '{}'  # what that runs
 - **Add** picks a type; **Duplicate**, **Remove**, **↑/↓** act on the selected row; the dot toggles `enabled`.
 - **Apply on change** (default on) saves after every edit through `desktop-widgets write`, so an invalid value is refused with its reason in the footer and the file is left alone. Off, edits wait for **Save**; **Revert** reloads the file; Esc asks before discarding.
 - Values equal to the registry default are dropped from the file, so it stays minimal.
-- Keys: `j`/`k` select, Tab moves through fields, Ctrl+S saves, Esc closes (or leaves a text field).
+- Keys: `j`/`k` select, Tab moves through fields, Ctrl+S saves, Ctrl+Shift+S saves and closes, Esc closes (or leaves a text field).
+- A successful save is confirmed in the status line (`✓ Saved HH:MM:SS — N widgets written…`, highlighted for a moment) and the Save button reads *Saved ✓*; **Save & close** writes if needed and closes the panel.
 - If the file has comments the panel starts with apply-on-change off and warns that saving from it drops them.
 - Scriptable: `omarchy-shell shell call homelab.desktop-widgets call '{"op":"add","type":"clock"}'`
   (ops: `select{index}`, `add{type}`, `remove`, `duplicate`, `move{dir}`, `set{key,value}`, `toggleEnabled{index}`, `save`, `revert`, `applyOnChange{value}`, `state`).
@@ -321,6 +346,7 @@ desktop-widgets status
 | `enable <index>` / `disable <index>` | keep the widget in the file but hide it |
 | `remove <index>` / `duplicate <index>` | delete, or copy into the next slot |
 | `apps [--json] [--all]` | desktop entries a dock can show (id + name) |
+| `pets [--json]` | sprite sheets a pet can use (plugin examples, `~/.config/omarchy/desktop-widgets.pets`, Hermes pets and profiles) |
 | `grid [on\|off\|toggle\|<px>]` | show or set arrange-mode grid snapping |
 | `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
 | `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |

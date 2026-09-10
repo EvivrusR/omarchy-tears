@@ -112,7 +112,7 @@ Item {
   }
 
   // `omarchy-shell shell call homelab.desktop-widgets call '{"op":"add","type":"clock"}'`
-  // ops: select{index} add{type} remove duplicate move{dir} set{key,value} toggleEnabled{index} save revert applyOnChange{value} preset{name} presets state
+  // ops: select{index} add{type} remove duplicate move{dir} set{key,value} toggleEnabled{index} save saveClose revert applyOnChange{value} preset{name} presets state
   function call(arg) {
     var c
     try { c = JSON.parse(String(arg || "{}")) } catch (e) { return "bad json" }
@@ -125,6 +125,7 @@ Item {
       case "set": setField(String(c.key), c.value); return "ok"
       case "toggleEnabled": toggleEnabled(Number(c.index)); return "ok"
       case "save": save(); return "ok"
+      case "saveClose": saveAndClose(); return "ok"
       case "revert": revert(); return "ok"
       case "applyOnChange": applyOnChange = c.value === true; return "ok"
       case "arrange": if (!service) return "no service"; service.setArranging(c.value !== false); dismiss(); return "ok"
@@ -132,16 +133,26 @@ Item {
       case "preset": applyPreset(String(c.name || "")); return "ok"
       case "presets": return JSON.stringify(presets.map(function(p) { return p.name }))
       case "grid": if (!service) return "no service"; service.setGrid(c.enabled !== false, c.size || service.grid.size); return "ok"
-      case "state": return JSON.stringify({ selected: selected, dirty: dirty, saving: saving, status: statusText, count: doc.length, applyOnChange: applyOnChange, presets: presets.length })
+      case "state": return JSON.stringify({ selected: selected, dirty: dirty, saving: saving, status: statusText, count: doc.length, applyOnChange: applyOnChange, presets: presets.length, opened: opened, savedAt: savedAt })
       default: return "unknown op"
     }
   }
+  property bool closeAfterSave: false
+  property bool savedFlash: false     // brief accent-coloured confirmation after a successful save
+  property string savedAt: ""
   function save() {
     if (saving) { saveTimer.restart(); return }
     saving = true
+    savedFlash = false
     statusText = "saving…"
     writer.running = true
   }
+  function saveAndClose() {
+    if (!dirty) { close(); return }
+    closeAfterSave = true
+    save()
+  }
+  Timer { id: flashTimer; interval: 2500; onTriggered: root.savedFlash = false }
 
   Timer { id: saveTimer; interval: 250; onTriggered: root.save() }
 
@@ -164,8 +175,16 @@ Item {
     onExited: function(code) {
       root.saving = false
       writer.stdinEnabled = true
-      if (code === 0) { root.saved = JSON.parse(JSON.stringify(root.doc)); root.statusText = "saved" }
-      else root.statusText = "ERROR " + (String(writerErr.text || "").trim().split("\n")[0].replace(/^ERROR\s+/, "") || ("write failed (" + code + ")"))
+      if (code === 0) {
+        root.saved = JSON.parse(JSON.stringify(root.doc))
+        root.savedAt = Qt.formatTime(new Date(), "HH:mm:ss")
+        root.statusText = "✓ Saved " + root.savedAt + " — " + root.doc.length + " widget" + (root.doc.length === 1 ? "" : "s") + " written to desktop-widgets.json"
+        root.savedFlash = true; flashTimer.restart()
+        if (root.closeAfterSave) { root.closeAfterSave = false; root.close() }
+      } else {
+        root.closeAfterSave = false
+        root.statusText = "ERROR " + (String(writerErr.text || "").trim().split("\n")[0].replace(/^ERROR\s+/, "") || ("write failed (" + code + ")"))
+      }
     }
   }
 
@@ -202,6 +221,7 @@ Item {
         Keys.onPressed: function(event) {
           if (root.confirmOpen) { if (discardConfirm.handleKey(event)) event.accepted = true; return }
           if (event.key === Qt.Key_Escape) { root.dismiss(); event.accepted = true }
+          else if (event.key === Qt.Key_S && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) { root.saveAndClose(); event.accepted = true }
           else if (event.key === Qt.Key_S && (event.modifiers & Qt.ControlModifier)) { if (root.dirty) root.save(); event.accepted = true }
           else if (event.key === Qt.Key_J || event.key === Qt.Key_Down) { if (root.selected < root.doc.length - 1) root.selected += 1; event.accepted = true }
           else if (event.key === Qt.Key_K || event.key === Qt.Key_Up) { if (root.selected > 0) root.selected -= 1; event.accepted = true }
@@ -348,11 +368,13 @@ Item {
               Layout.fillWidth: true
               readonly property string err: root.selectedEntry ? Model.firstError(root.messages, root.selected) : ""
               text: err !== "" ? "⚠ widget " + root.selected + ": " + err : root.statusText
-              color: err !== "" || root.statusText.indexOf("ERROR") === 0 ? Color.urgent : Color.muted
+              color: err !== "" || root.statusText.indexOf("ERROR") === 0 ? Color.urgent : (root.savedFlash ? Color.accent : Color.muted)
+              font.weight: root.savedFlash && err === "" ? Font.DemiBold : Font.Normal
               font.family: Style.font.family; font.pixelSize: Style.font.caption; elide: Text.ElideRight
             }
             Button { text: "Revert"; bordered: true; enabled: root.dirty; onClicked: root.revert() }
-            Button { text: "Save"; bordered: true; selected: root.dirty; enabled: root.dirty && !root.saving; onClicked: root.save() }
+            Button { text: root.savedFlash && !root.dirty ? "Saved ✓" : "Save"; bordered: true; selected: root.dirty || root.savedFlash; enabled: root.dirty && !root.saving; tooltipText: "Ctrl+S"; onClicked: root.save() }
+            Button { text: "Save & close"; bordered: true; enabled: !root.saving; tooltipText: "Ctrl+Shift+S — saves if needed, then closes"; onClicked: root.saveAndClose() }
           }
         }
 

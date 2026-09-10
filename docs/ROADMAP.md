@@ -266,6 +266,12 @@ honest), then the mirror and tag. About an evening on top of Phase 3.
 
 Spec `docs/superpowers/specs/2026-09-10-round2-design.md`. Built the same day on stacked branches `feat/grid-snap` → `feat/monitor-family` → `feat/weather` → `feat/dock`: grid snapping; battery / sysinfo / monitor widgets (+ `ops` preset); weather widget + full-screen ASCII weather effect with back/front/custom placement; launcher dock (wallpaper-layer, first input-taking widget). Each has a plan with a status table under `docs/superpowers/plans/`.
 
+## Backlog additions (2026-09-10, after v0.5.0)
+
+5. **Pet widget** — **DONE 2026-09-10** (`feat/pets`): Hermes/petdex sheet contract, watch presets claude/battery/agents/cpu/mem/gpu + custom rules, multiple pets, variable size. Spec `docs/superpowers/specs/2026-09-10-pet-widget-design.md`, plan `docs/superpowers/plans/2026-09-10-pets.md`. Later: roam, petdex fetcher.
+
+6. **Linked + layered pets** (Michael, 2026-09-10) — **props + links DONE 2026-09-10** on `feat/pets`; outfit pipeline proven with a procedural pet + jacket (`examples/pets/hanna`); a Hermes /hatch outfit (paid) remains optional. Layers (body + outfit/prop sheets in lock-step via `currentFrame` + `sourceClipRect`, static PNG props, wardrobe swap-out) and links (pets publish `pets.<name>.state` for each other's rules). Scoped in `docs/superpowers/specs/2026-09-10-linked-and-layered-pets-design.md`; content (transparent-body outfit art) is the real blocker — props first.
+
 ## Order and what needs Michael's word
 
 1. Phase 1 registry + CLI + JSONC — recommended to start now; no decisions needed beyond "go".
