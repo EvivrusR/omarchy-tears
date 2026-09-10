@@ -1,0 +1,8 @@
+{
+  "id": "hanna-jacket",
+  "displayName": "Hanna \u2014 track jacket",
+  "description": "Outfit layer for hanna: black track jacket with red trim, transparent body. Same atlas, drawn in lock-step.",
+  "spritesheetPath": "spritesheet.png",
+  "layer": true,
+  "createdBy": "generate.py"
+}

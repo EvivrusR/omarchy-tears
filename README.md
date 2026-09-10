@@ -145,6 +145,10 @@ Per type:
   **Links**: every pet publishes `pets.<name>.state`, `.say` and `.watch` for the others' rules, so
   `{"kind":"when","if":"pets.jill.state == 'failed'","state":"waiting","say":"jill?!"}` makes one pet react to
   another (they read the previous tick, so nobody waits on anybody). `name` defaults to the sheet's folder.
+  **Make your own without an image model**: `examples/pets/hanna/generate.py` draws a chibi pet procedurally
+  (pycairo + ImageMagick, pixel look, all nine rows) and a matching outfit sheet on a transparent body
+  (`examples/pets/hanna-jacket`) — copy it, change the colours and poses, run it, and you have a pet plus
+  swappable outfits that stay in lock-step.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
