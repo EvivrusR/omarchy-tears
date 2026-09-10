@@ -4,7 +4,7 @@ homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
 
 Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
 two engines identical."""
-import argparse, datetime, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, datetime, glob, json, os, re, shutil, subprocess, sys, tempfile
 
 PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -237,6 +237,7 @@ def summarize(entry, registry):
         "sysinfo": lambda e: f"{e.get('logo', 'omarchy')} {len(e.get('fields', []) or [1]*9)} rows",
         "monitor": lambda e: ",".join(e.get("rows", ["cpu", "mem", "net-down", "net-up"])) + f" {e.get('intervalSec', 10)}s/{e.get('windowSec', 300)}s",
         "weather": lambda e: f"{e.get('place', 'Tokyo, Japan')}" + (f" +effect/{e.get('effectPlacement', 'back')}" if e.get("effect") else ""),
+        "pet": lambda e: f"{os.path.basename(os.path.dirname(e.get('sheet', ''))) or '(no sheet)'} watches {e.get('watch', 'claude')} {e.get('size', 96)}px",
         "dock": lambda e: ",".join(e.get("apps", [])[:4]) + ("…" if len(e.get("apps", [])) > 4 else ""),
         "shape": lambda e: f"{e.get('kind', 'rect')} {e.get('width', 320)}×{e.get('height', 200)} {e.get('fill', 'background')}@{e.get('alpha', 0.4)}",
     }
@@ -649,6 +650,40 @@ def cmd_apps(args, ctx):
     return 0
 
 
+# ---------------------------------------------------------------- pets (sprite sheets on this machine)
+def pet_dirs():
+    home = os.path.expanduser("~")
+    hermes = os.environ.get("HERMES_HOME") or os.path.join(home, ".hermes")
+    dirs = [("plugin", os.path.join(PLUGIN_DIR, "examples", "pets")), ("yours", os.path.join(_config_base(), "omarchy", "desktop-widgets.pets")), ("hermes", os.path.join(hermes, "pets"))]
+    for prof in sorted(glob.glob(os.path.join(hermes, "profiles", "*", "pets"))): dirs.append(("hermes:" + os.path.basename(os.path.dirname(prof)), prof))
+    return dirs
+
+
+def list_pets():
+    out = []
+    for origin, d in pet_dirs():
+        if not os.path.isdir(d): continue
+        for name in sorted(os.listdir(d)):
+            pd = os.path.join(d, name)
+            sheet = next((os.path.join(pd, f) for f in ("spritesheet.webp", "sprite.webp", "spritesheet.png") if os.path.exists(os.path.join(pd, f))), None)
+            if not sheet: continue
+            meta = {}
+            try:
+                with open(os.path.join(pd, "pet.json")) as fh: meta = json.load(fh)
+            except (OSError, json.JSONDecodeError): pass
+            out.append({"slug": name, "name": meta.get("displayName") or name, "origin": origin, "sheet": sheet, "description": meta.get("description", "")})
+    return out
+
+
+def cmd_pets(args, ctx):
+    pets = list_pets()
+    if args.json: print(json.dumps({"pets": pets})); return 0
+    if not pets:
+        print("no sprite sheets found — get one from https://petdex.dev into ~/.config/omarchy/desktop-widgets.pets/<name>/spritesheet.webp, or /hatch one in Hermes"); return 0
+    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {p['name']:<20} {p['sheet']}")
+    return 0
+
+
 # ---------------------------------------------------------------- grid
 def cmd_grid(args, ctx):
     try:
@@ -927,6 +962,7 @@ def build_parser():
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
     ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
+    pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true"); pt.set_defaults(fn=cmd_pets)
     gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
     pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")

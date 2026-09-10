@@ -381,6 +381,7 @@ Item {
             case "monitor": return "widgets/MonitorWidget.qml"
             case "weather": return "widgets/WeatherWidget.qml"
             case "dock": return "widgets/DockWidget.qml"
+            case "pet": return "widgets/PetWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""

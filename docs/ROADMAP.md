@@ -268,7 +268,7 @@ Spec `docs/superpowers/specs/2026-09-10-round2-design.md`. Built the same day on
 
 ## Backlog additions (2026-09-10, after v0.5.0)
 
-5. **Pet widget** — Hermes-Pets-style sprite that reacts to signals (Claude usage, battery, active agents…); scoped in `docs/superpowers/specs/2026-09-10-pet-widget-design.md`, awaiting Michael's three decisions.
+5. **Pet widget** — **DONE 2026-09-10** (`feat/pets`): Hermes/petdex sheet contract, watch presets claude/battery/agents/cpu/mem/gpu + custom rules, multiple pets, variable size. Spec `docs/superpowers/specs/2026-09-10-pet-widget-design.md`, plan `docs/superpowers/plans/2026-09-10-pets.md`. Later: roam, petdex fetcher.
 
 ## Order and what needs Michael's word
 
