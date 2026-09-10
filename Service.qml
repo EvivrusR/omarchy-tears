@@ -82,6 +82,15 @@ Item {
     overrides = next
   }
 
+  // Pets publish their state for each other's rules (pets.<name>.state / say / watch).
+  property var petStates: ({})
+  function publishPet(name, info) {
+    var next = ({})
+    for (var k in petStates) next[k] = petStates[k]
+    next[String(name)] = info
+    petStates = next
+  }
+
   // Save a whole document through the CLI (validated, .bak kept). onDone(ok, message).
   property var saveCallback: null
   function saveDoc(doc, onDone, withSettings) {
@@ -381,13 +390,14 @@ Item {
             case "monitor": return "widgets/MonitorWidget.qml"
             case "weather": return "widgets/WeatherWidget.qml"
             case "dock": return "widgets/DockWidget.qml"
+            case "pet": return "widgets/PetWidget.qml"
             default: {
               var t = root.registry && root.registry.types ? root.registry.types[String(win.widget.type)] : null
               return t && t.source ? "file://" + t.source : ""
             }
           }
         }
-        onLoaded: item.config = win.widget
+        onLoaded: { item.config = win.widget; if ("service" in item) item.service = root }
         onStatusChanged: {
           if (status === Loader.Error)
             root.log("widget " + win.widget.__index + " (" + win.widget.type + ") failed to load")

@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Signals for pet widgets: one flat JSON object per run (best effort, never fails).
+  {"t": …, "claude": {"session": 66, "weekly": 46, "resetInMin": 118, "label": "Session (5-hour)"},
+   "battery": {"pct": 51, "status": "Charging", "charging": true, "discharging": false, "full": false},
+   "agents": {"active": 2}, "cpu": 12.3, "mem": 21.6, "gpu": null, "load": 0.4, "temp": 63.0, "hour": 9}
+Options: --agent claude|codex  (usage file under ~/.local/state/omarchy/agents/usage/)."""
+import datetime, importlib.machinery, importlib.util, json, os, subprocess, sys, time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_sample():
+    spec = importlib.util.spec_from_loader("dw_sample", importlib.machinery.SourceFileLoader("dw_sample", os.path.join(HERE, "dw-sample")))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); return m
+
+
+def parse_usage(data, now=None):
+    """Claude/Codex usage JSON (the shell's collector) -> session/weekly percent + minutes to reset."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    out = {"session": None, "weekly": None, "resetInMin": None, "label": ""}
+    if not isinstance(data, dict): return out
+    for lim in data.get("limits") or []:
+        label = str(lim.get("label", "")); pct = lim.get("percent")
+        try: pct = round(float(pct) * 100) if pct is not None and float(pct) <= 1.0 else (round(float(pct)) if pct is not None else None)
+        except (TypeError, ValueError): pct = None
+        key = "session" if "session" in label.lower() else ("weekly" if out["weekly"] is None and "week" in label.lower() else None)
+        if key and out[key] is None:
+            out[key] = pct
+            if key == "session":
+                out["label"] = label
+                try:
+                    reset = datetime.datetime.fromisoformat(str(lim.get("resetsAt")).replace("Z", "+00:00"))
+                    out["resetInMin"] = max(0, int((reset - now).total_seconds() // 60))
+                except (TypeError, ValueError): pass
+    return out
+
+
+def count_agents(ps_text):
+    """`ps -eo comm=` text -> number of claude/codex/hermes processes."""
+    names = ("claude", "codex", "hermes")
+    return sum(1 for line in ps_text.splitlines() if line.strip().split("/")[-1] in names)
+
+
+def main(argv):
+    agent = argv[argv.index("--agent") + 1] if "--agent" in argv else "claude"
+    out = {"t": time.time(), "claude": parse_usage(None), "battery": None, "agents": {"active": 0}, "cpu": None, "mem": None, "gpu": None, "load": None, "temp": None, "hour": datetime.datetime.now().hour}
+    try:
+        p = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"), "omarchy", "agents", "usage", agent + ".json")
+        with open(p) as fh: out["claude"] = parse_usage(json.load(fh))
+    except Exception: pass
+    try:
+        r = subprocess.run(["ps", "-eo", "comm="], capture_output=True, text=True, timeout=2)
+        out["agents"] = {"active": count_agents(r.stdout)}
+    except Exception: pass
+    try:
+        s = _load_sample().sample(cpu_pause=0.15)
+        out["cpu"] = s["cpu"]["pct"] if s.get("cpu") else None
+        out["mem"] = s["mem"]["pct"] if s.get("mem") else None
+        out["gpu"] = s["gpu"]["pct"] if s.get("gpu") else None
+        out["load"] = s["load"][0] if s.get("load") else None
+        out["temp"] = s["temp"]["c"] if s.get("temp") else None
+        b = s.get("battery")
+        if b: out["battery"] = {"pct": b["pct"], "status": b["status"], "charging": b["status"] == "Charging", "discharging": b["status"] == "Discharging", "full": b["status"] == "Full"}
+    except Exception: pass
+    print(json.dumps(out)); return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

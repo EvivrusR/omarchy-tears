@@ -66,7 +66,7 @@ Keys every widget accepts:
 
 | key | default | meaning |
 |---|---|---|
-| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, `dock`, or any drop-in |
+| `type` | required | `clock`, `stats`, `command`, `agents`, `template`, `shape`, `battery`, `sysinfo`, `monitor`, `weather`, `dock`, `pet`, or any drop-in |
 | `corner` | `top-right` | `top-left`, `top-right`, `bottom-left`, `bottom-right`, `top-center`, `bottom-center` (centre ignores `x`) |
 | `x`, `y` | 48 | offset from that corner, px |
 | `z` | 0 | stacking: lower sits further back (−100..100); equal `z` keeps list order |
@@ -127,6 +127,28 @@ Per type:
   any icon set matches the theme; `mono` decolourises them to greys; `original` keeps the real icons), `iconSize` 32, `spacing` 8, `labels` (names
   under icons; otherwise a hover tooltip), `hoverScale` 1.2. Defaults to `bottom-center`, `y: 8`, `backdrop: 0.5`.
   Launches through `uwsm-app -- gtk-launch <id>.desktop`, the way Omarchy's menu does.
+- **pet**: an animated sprite that reacts to something you choose. Uses the **Hermes / petdex sprite-sheet
+  contract** (`spritesheet.webp`, 192×208 cells, 8 columns, one row per state: idle, running, waving,
+  jumping, failed, waiting, review), so any pet from [petdex.dev](https://petdex.dev) or one hatched in
+  [Hermes Agent](https://github.com/NousResearch/hermes-agent) with `/hatch` drops straight in — put it under
+  `~/.config/omarchy/desktop-widgets.pets/<name>/`, or point `sheet` at `~/.hermes/pets/<slug>/spritesheet.webp`;
+  `desktop-widgets pets` lists every sheet on the machine and the plugin ships `examples/pets/hermes-girl`.
+  `watch` picks a ready-made rule set: `claude` (session %, agents at work, reset), `battery`, `agents`, `cpu`,
+  `mem`, `gpu`, or `custom` with your own `rules` (rows of `when`/`on`: a test over the signals, the state to
+  show, an optional `beat` in seconds for `on`, and a `say` bubble text with `{signal}` placeholders). Add one
+  pet per thing you care about. `size` (96 px, any value), `fps` 6, `bubble`, `flip`, `intervalSec` 5. The
+  sprite carries no logic; the rules do, and a blank trailing frame in a row is trimmed the way Hermes does.
+  **Layers**: `layers` rows add props and outfits drawn with the body — `image` (a static PNG/SVG such as
+  the shipped `examples/pets/props/rug.png` and `stool.png`; `z` back/front, `x`/`y` offset in cell px, `scale`)
+  or `sheet` (another sprite sheet in the same atlas, clipped to the body's current row and frame so it never
+  drifts; `follow` names the row to use when it lacks one). The pet's window grows to fit its layers.
+  **Links**: every pet publishes `pets.<name>.state`, `.say` and `.watch` for the others' rules, so
+  `{"kind":"when","if":"pets.jill.state == 'failed'","state":"waiting","say":"jill?!"}` makes one pet react to
+  another (they read the previous tick, so nobody waits on anybody). `name` defaults to the sheet's folder.
+  **Make your own without an image model**: `examples/pets/hanna/generate.py` draws a chibi pet procedurally
+  (pycairo + ImageMagick, pixel look, all nine rows) and a matching outfit sheet on a transparent body
+  (`examples/pets/hanna-jacket`) — copy it, change the colours and poses, run it, and you have a pet plus
+  swappable outfits that stay in lock-step.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
@@ -324,6 +346,7 @@ desktop-widgets status
 | `enable <index>` / `disable <index>` | keep the widget in the file but hide it |
 | `remove <index>` / `duplicate <index>` | delete, or copy into the next slot |
 | `apps [--json] [--all]` | desktop entries a dock can show (id + name) |
+| `pets [--json]` | sprite sheets a pet can use (plugin examples, `~/.config/omarchy/desktop-widgets.pets`, Hermes pets and profiles) |
 | `grid [on\|off\|toggle\|<px>]` | show or set arrange-mode grid snapping |
 | `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
 | `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |
