@@ -190,11 +190,11 @@ Effort: template type one evening; drop-in types half a day including docs.
 
 The plugin already has the shape Omarchy wants for sharing: a git repo with a
 `manifest.json` at its root, installed with one command. What remains is the
-distance between "works on envi-laptop" and "works on a stranger's laptop".
+distance between "works on the dev laptop" and "works on a stranger's laptop".
 
 | Item | Why | Work |
 |---|---|---|
-| Public mirror | Forge is reachable only over Tailscale. | GitHub repo + Forgejo push mirror (same pattern as the LoRA Forge release plan); README install line points at GitHub. |
+| Public mirror | Forge is private. | GitHub repo + Forgejo push mirror (same pattern as the LoRA Forge release plan); README install line points at GitHub. |
 | One-line install | `omarchy plugin add https://github.com/<user>/omarchy-desktop-widgets.git --enable` | Already true. Verify on a fresh Omarchy VM or a second user account. |
 | First run | An empty config is a blank desktop and a silent log line. | On first enable with no config, the service writes the starter layout (clock + stats + agents, theme-token colours) and logs where it put it; the editor shows "Start with the example layout" when the list is empty. |
 | `desktop-widgets install` / `uninstall` | Today the CLI symlink, menu rows and keybind are three hand edits. | One idempotent command that links `~/.local/bin/desktop-widgets`, inserts the Household menu rows (or a top-level `widgets` row when there is no Household submenu), and appends the keybind to `bindings.lua` with a marker comment; `uninstall` reverses all three. |
@@ -245,7 +245,7 @@ honest), then the mirror and tag. About an evening on top of Phase 3.
    on every install) rather than Michael's Household submenu. Change
    `desktop-widgets install` to insert `style.widgets.*` rows by default
    (Style is a default submenu, so no "household exists?" branch), move
-   Michael's rows on envi-laptop, update README/vault. Half an hour.
+   Michael's rows on the dev laptop, update README/vault. Half an hour.
 
 4. **Shape widgets for contrast and form.** (Michael, 2026-09-10.) **DONE 2026-09-10** — plan `docs/superpowers/plans/2026-09-10-shape-widgets-and-z.md`. Today each
    widget can only draw a card behind *itself* (`backdrop` alpha). Add a

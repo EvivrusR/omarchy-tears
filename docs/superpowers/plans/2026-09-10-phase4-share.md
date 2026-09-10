@@ -18,7 +18,7 @@
 | 2 First-run: editor "Start with the example layout", service hint | done | 451f9a9 | live: config aside → empty state → init → 5 widgets; editor follows the file |
 | 3 Scrub, clean screenshots, README install/compat, CHANGELOG, manifest 0.4.0, tag v0.4.0 | done | 451f9a9 | tag v0.4.0 pushed to Forge |
 | 4 Backlog into ROADMAP + vault Tool Ideas; DQ for mirror inputs; vault/board/memory | done | 1ecb29a | |
-| 5 GitHub mirror | done | 81c166b | `github` remote via deploy key (`~/.ssh/omarchy-tears_deploy`, ssh alias `github.com-omarchy-tears`); master + v0.4.0 pushed; fresh public clone validates and both suites pass |
+| 5 GitHub mirror | done | 81c166b | `github` remote via a repo-scoped deploy key; master + v0.4.0 pushed; fresh public clone validates and both suites pass |
 
 **How to resume:** read this file; run both test suites; continue at the first task not done. Code changes need `omarchy restart shell`.
 

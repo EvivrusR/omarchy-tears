@@ -1,6 +1,6 @@
 # Linked and layered pets — scope (draft for Michael, 2026-09-10)
 
-> **Status 2026-09-10:** Michael chose props first, spike on Venni, links = pets reading each other's states. Props (static `image` layers), `sheet` layers in lock-step, and links are **built** on `feat/pets`; the hatch spike waits for a spend OK (paid image API). **Outfit pipeline proven for free instead**: `examples/pets/hanna/generate.py` renders a procedural chibi Hanna and a transparent-body jacket sheet; both drawn in lock-step live on 2026-09-10.
+> **Status 2026-09-10:** Michael chose props first, spike on the local sheet, links = pets reading each other's states. Props (static `image` layers), `sheet` layers in lock-step, and links are **built** on `feat/pets`; the hatch spike waits for a spend OK (paid image API). **Outfit pipeline proven for free instead**: `examples/pets/hanna/generate.py` renders a procedural chibi Hanna and a transparent-body jacket sheet; both drawn in lock-step live on 2026-09-10.
 
 **Ask:** "linked pets so that you can layer them and allow stuff like outfit or furniture swap-out."
 
@@ -74,5 +74,5 @@ follow-the-leader offset; queue behind roam.
 ## Decisions for Michael
 
 - Start with props (PNG furniture, works with any art today) before outfits? (recommended)
-- Try the Hermes hatch spike for an outfit sheet, on Venni or the default profile?
+- Try the Hermes hatch spike for an outfit sheet, on the local sheet or the default profile?
 - Links: is "reads other pets' states in rules" the behaviour you meant, or physical grouping?

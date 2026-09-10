@@ -5,7 +5,7 @@ a clock, system stats bars, and the output of any shell command. They sit
 above the wallpaper and below every window, recolour with `omarchy theme set`,
 and never touch Omarchy's own files.
 
-![clock top-right, stats bottom-left, command bottom-right](docs/screenshot.png)
+![system info, agent session and a pet on the left; clock, battery and monitor graphs on the right](docs/screenshot.png)
 
 ## Install
 

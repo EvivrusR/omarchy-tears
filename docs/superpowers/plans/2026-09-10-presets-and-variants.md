@@ -34,7 +34,7 @@
 ### Task 2: Stats orientation
 - [x] Registry field `orientation` on `stats` (enum, default `horizontal`).
 - [x] `widgets/StatsWidget.qml`: vertical layout (label + value line, bar beneath, full column width).
-- [x] Live: apply `column` preset on envi-laptop (after saving the current layout as `michael`), screenshot, restore.
+- [x] Live: apply `column` preset on the dev laptop (after saving the current layout as `michael`), screenshot, restore.
 
 ### Task 3: Editor + docs
 - [x] `Editor.qml`: Presets dropdown (list from CLI, apply via CLI, status line).
