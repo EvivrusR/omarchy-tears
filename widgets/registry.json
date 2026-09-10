@@ -918,6 +918,13 @@
       },
       "fields": [
         {
+          "key": "name",
+          "type": "string",
+          "label": "Name",
+          "default": "",
+          "description": "how other pets refer to this one in rules (pets.<name>.state); default: the sheet's folder name"
+        },
+        {
           "key": "sheet",
           "type": "path",
           "label": "Sprite sheet",
@@ -991,6 +998,17 @@
           "default": 5,
           "min": 2,
           "max": 120
+        },
+        {
+          "key": "layers",
+          "type": "rows",
+          "label": "Layers (props / outfits)",
+          "options": [
+            "image",
+            "sheet"
+          ],
+          "default": [],
+          "description": "drawn with the body: image = a static PNG/SVG prop (path, z back|front, x/y offset in cell px, scale); sheet = another sprite sheet in the same atlas that follows the body's row and frame (follow = row to use when it lacks one). `desktop-widgets pets` lists props under ~/.config/omarchy/desktop-widgets.pets/props/"
         }
       ]
     }

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Pets — layers + links**: `layers` rows (static props with offsets, or outfit sheets in frame lock-step; window grows to fit), `pets.<name>.state/say/watch` signals so pets react to each other, string literals in rules, `name`; example props `rug.png` / `stool.png`; `desktop-widgets pets` lists props.
 - **Pets**: `pet` widget — Hermes/petdex sprite sheets animated by rules over live signals (`watch`: claude / battery / agents / cpu / mem / gpu / custom rules); several pets at once; variable `size`; speech bubble; `desktop-widgets pets`; `bin/dw-signals`; example sheet `examples/pets/hermes-girl`.
 - sysinfo: `logo` is now a dropdown of common fastfetch logos + `none` + `custom`; custom reveals `logoName`, a multi-line `art` box (new `text` field type) and `artFile`. **Migration:** `"logo": "<other name>"` becomes `"logo": "custom", "logoName": "<name>"`. Shell name no longer reports the sampler script.
 - Editor: explicit save confirmation (status line + *Saved ✓* button) and a **Save & close** button (Ctrl+Shift+S); IPC op `saveClose`.

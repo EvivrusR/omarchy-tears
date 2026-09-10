@@ -675,12 +675,21 @@ def list_pets():
     return out
 
 
+def list_props():
+    out = []
+    for origin, d in (("plugin", os.path.join(PLUGIN_DIR, "examples", "pets", "props")), ("yours", os.path.join(_config_base(), "omarchy", "desktop-widgets.pets", "props"))):
+        if not os.path.isdir(d): continue
+        for fn in sorted(os.listdir(d)):
+            if fn.lower().endswith((".png", ".svg", ".webp")): out.append({"slug": fn.rsplit(".", 1)[0], "name": fn, "origin": origin, "sheet": os.path.join(d, fn), "prop": True})
+    return out
+
+
 def cmd_pets(args, ctx):
-    pets = list_pets()
+    pets = list_pets() + list_props()
     if args.json: print(json.dumps({"pets": pets})); return 0
     if not pets:
         print("no sprite sheets found — get one from https://petdex.dev into ~/.config/omarchy/desktop-widgets.pets/<name>/spritesheet.webp, or /hatch one in Hermes"); return 0
-    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {p['name']:<20} {p['sheet']}")
+    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {('prop: ' if p.get('prop') else '') + p['name']:<20} {p['sheet']}")
     return 0
 
 

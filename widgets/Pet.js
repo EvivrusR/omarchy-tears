@@ -4,7 +4,7 @@
 // ---- safe expression evaluator: numbers, true/false/null, dotted signal
 // paths, comparison, && || !, parentheses. Unknown paths are null (falsy).
 function tokenize(src) {
-  var out = [], re = /\s*(>=|<=|==|!=|&&|\|\||[()!<>]|-?\d+(?:\.\d+)?|[A-Za-z_][\w.]*)/g, m, pos = 0
+  var out = [], re = /\s*(>=|<=|==|!=|&&|\|\||[()!<>]|-?\d+(?:\.\d+)?|'[^']*'|"[^"]*"|[A-Za-z_][\w.]*)/g, m, pos = 0
   while ((m = re.exec(src)) !== null) {
     if (m.index !== pos) throw new Error("bad token near '" + src.slice(pos, pos + 8) + "'")
     out.push(m[1]); pos = re.lastIndex
@@ -29,6 +29,7 @@ function evalExpr(src, signals) {
     if (k === "!") return !truthy(atom())
     if (k === "true") return true; if (k === "false") return false; if (k === "null") return null
     if (/^-?\d/.test(k)) return Number(k)
+    if (k.charAt(0) === "'" || k.charAt(0) === '"') return k.slice(1, -1)
     return lookup(k, signals)
   }
   function cmp() {
@@ -141,4 +142,40 @@ function trimCounts(maxAlphaPerCell, rows) {
   return out
 }
 
-if (typeof module !== "undefined") module.exports = { tokenize, evalExpr, lookup, WATCH, STATES, rulesFor, fill, step, rowFor, rowNames, trimCounts, FRAME_W, FRAME_H, COLS, FRAMES, LOOP_MS }
+// Layers: normalise a config row into what the widget draws.
+function layerSpec(row) {
+  if (!row || typeof row !== "object") return null
+  var kind = String(row.kind || (row.sheet ? "sheet" : "image"))
+  var src = String(kind === "sheet" ? (row.sheet || "") : (row.image || ""))
+  if (!src) return null
+  return { kind: kind, source: src, front: String(row.z || "front") !== "back", x: Number(row.x) || 0, y: Number(row.y) || 0,
+           scale: Number(row.scale) > 0 ? Number(row.scale) : 1, follow: String(row.follow || "idle") }
+}
+function layerSpecs(rows) {
+  var out = []
+  for (var i = 0; i < (rows || []).length; i++) { var l = layerSpec(rows[i]); if (l) out.push(l) }
+  return out
+}
+// Union of the body cell and every layer, in screen px. `sizes` maps a layer
+// index to its natural {w, h} (props) once loaded; unknown sizes count as 0.
+function bounds(layers, bodyW, bodyH, cellScale, sizes) {
+  var minX = 0, minY = 0, maxX = bodyW, maxY = bodyH
+  for (var i = 0; i < (layers || []).length; i++) {
+    var l = layers[i], x = l.x * cellScale, y = l.y * cellScale, w, h
+    if (l.kind === "sheet") { w = bodyW; h = bodyH }
+    else { var sz = sizes && sizes[i] ? sizes[i] : { w: 0, h: 0 }; w = sz.w * cellScale * l.scale; h = sz.h * cellScale * l.scale }
+    if (x < minX) minX = x; if (y < minY) minY = y
+    if (x + w > maxX) maxX = x + w; if (y + h > maxY) maxY = y + h
+  }
+  return { x: minX, y: minY, w: Math.ceil(maxX - minX), h: Math.ceil(maxY - minY) }
+}
+
+// What a pet publishes for the others: pets.<name>.{state, say, watch}.
+function petName(config) {
+  var n = String(config.name || "").trim()
+  if (n) return n.toLowerCase().replace(/[^a-z0-9_]+/g, "_")
+  var parts = String(config.sheet || "").replace(/\/+$/, "").split("/")
+  return (parts.length >= 2 ? parts[parts.length - 2] : parts[parts.length - 1] || "pet").toLowerCase().replace(/[^a-z0-9_]+/g, "_")
+}
+
+if (typeof module !== "undefined") module.exports = { layerSpec, layerSpecs, petName, bounds, tokenize, evalExpr, lookup, WATCH, STATES, rulesFor, fill, step, rowFor, rowNames, trimCounts, FRAME_W, FRAME_H, COLS, FRAMES, LOOP_MS }

@@ -47,3 +47,24 @@ test("sheet rows: codex 9-row and legacy 8-row mapping, trim counts", () => {
   const counts = P.trimCounts(alpha, 9);
   assert.equal(counts[0], 6); assert.equal(counts[1], 4); assert.equal(P.trimCounts([], 2).join(","), "1,1");
 });
+
+test("string literals and other pets' states in rules; layer specs; pet names", () => {
+  const sig = { pets: { jill: { state: "failed", say: "cap" } }, cpu: 5 };
+  assert.equal(P.evalExpr("pets.jill.state == 'failed'", sig), true);
+  assert.equal(P.evalExpr('pets.jill.state == "idle" || cpu < 10', sig), true);
+  assert.equal(P.evalExpr("pets.nobody.state == 'idle'", sig), false);
+  const s = P.step([{ kind: "on", if: "pets.jill.state == 'failed'", state: "waving", beat: 1, say: "you ok?" }], sig, { edges: { 0: false } }, 100);
+  assert.equal(s.state, "waving"); assert.equal(s.say, "you ok?");
+  assert.deepEqual(P.layerSpec({ kind: "image", image: "/p/rug.png", z: "back", x: -10, y: 4 }), { kind: "image", source: "/p/rug.png", front: false, x: -10, y: 4, scale: 1, follow: "idle" });
+  assert.equal(P.layerSpec({ kind: "sheet", sheet: "/o/coat.webp" }).front, true); assert.equal(P.layerSpec({ kind: "image" }), null);
+  assert.equal(P.layerSpecs([{ image: "/a.png" }, {}, { sheet: "/b.webp", scale: 0 }]).length, 2);
+  assert.equal(P.petName({ sheet: "/x/pets/Jill Stingray/spritesheet.webp" }), "jill_stingray"); assert.equal(P.petName({ name: "Girl!", sheet: "/y" }), "girl_"); assert.equal(P.petName({}), "pet");
+});
+
+test("bounds grows to the union of body and layers and reports the offset", () => {
+  const layers = P.layerSpecs([{ image: "/rug.png", z: "back", x: -14, y: 150, scale: 1.1 }, { image: "/stool.png", x: 120, y: 80 }, { sheet: "/coat.webp" }]);
+  const b = P.bounds(layers, 118, 128, 128 / 208, { 0: { w: 220, h: 70 }, 1: { w: 90, h: 120 } });
+  assert.ok(b.x < 0 && b.y === 0); assert.ok(b.w > 118 && b.h > 128);
+  assert.deepEqual(P.bounds([], 118, 128, 1, {}), { x: 0, y: 0, w: 118, h: 128 });
+  assert.deepEqual(P.bounds(layers.slice(2), 118, 128, 1, {}), { x: 0, y: 0, w: 118, h: 128 });   // a sheet layer adds nothing
+});

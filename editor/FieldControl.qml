@@ -156,7 +156,7 @@ RowLayout {
   }
 
   // rows: a small editor for template rows — kind dropdown + that kind's keys.
-  readonly property var rowKeys: ({ heading: ["text"], text: ["text"], kv: ["label", "value"], bar: ["label", "value", "text", "max", "warnAt"], spacer: ["height"], when: ["if", "state", "say"], on: ["if", "state", "beat", "say"] })
+  readonly property var rowKeys: ({ heading: ["text"], text: ["text"], kv: ["label", "value"], bar: ["label", "value", "text", "max", "warnAt"], spacer: ["height"], when: ["if", "state", "say"], on: ["if", "state", "beat", "say"], image: ["image", "z", "x", "y", "scale"], sheet: ["sheet", "z", "x", "y", "scale", "follow"] })
   function rowsArray() {
     var v = root.value
     var a = []

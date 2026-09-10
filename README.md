@@ -138,6 +138,13 @@ Per type:
   show, an optional `beat` in seconds for `on`, and a `say` bubble text with `{signal}` placeholders). Add one
   pet per thing you care about. `size` (96 px, any value), `fps` 6, `bubble`, `flip`, `intervalSec` 5. The
   sprite carries no logic; the rules do, and a blank trailing frame in a row is trimmed the way Hermes does.
+  **Layers**: `layers` rows add props and outfits drawn with the body — `image` (a static PNG/SVG such as
+  the shipped `examples/pets/props/rug.png` and `stool.png`; `z` back/front, `x`/`y` offset in cell px, `scale`)
+  or `sheet` (another sprite sheet in the same atlas, clipped to the body's current row and frame so it never
+  drifts; `follow` names the row to use when it lacks one). The pet's window grows to fit its layers.
+  **Links**: every pet publishes `pets.<name>.state`, `.say` and `.watch` for the others' rules, so
+  `{"kind":"when","if":"pets.jill.state == 'failed'","state":"waiting","say":"jill?!"}` makes one pet react to
+  another (they read the previous tick, so nobody waits on anybody). `name` defaults to the sheet's folder.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),

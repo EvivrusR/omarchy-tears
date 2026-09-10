@@ -270,7 +270,7 @@ Spec `docs/superpowers/specs/2026-09-10-round2-design.md`. Built the same day on
 
 5. **Pet widget** — **DONE 2026-09-10** (`feat/pets`): Hermes/petdex sheet contract, watch presets claude/battery/agents/cpu/mem/gpu + custom rules, multiple pets, variable size. Spec `docs/superpowers/specs/2026-09-10-pet-widget-design.md`, plan `docs/superpowers/plans/2026-09-10-pets.md`. Later: roam, petdex fetcher.
 
-6. **Linked + layered pets** (Michael, 2026-09-10) — layers (body + outfit/prop sheets in lock-step via `currentFrame` + `sourceClipRect`, static PNG props, wardrobe swap-out) and links (pets publish `pets.<name>.state` for each other's rules). Scoped in `docs/superpowers/specs/2026-09-10-linked-and-layered-pets-design.md`; content (transparent-body outfit art) is the real blocker — props first.
+6. **Linked + layered pets** (Michael, 2026-09-10) — **props + links DONE 2026-09-10** on `feat/pets`; outfit-art spike (Hermes /hatch on Venni, paid image API) awaits Michael's spend OK. Layers (body + outfit/prop sheets in lock-step via `currentFrame` + `sourceClipRect`, static PNG props, wardrobe swap-out) and links (pets publish `pets.<name>.state` for each other's rules). Scoped in `docs/superpowers/specs/2026-09-10-linked-and-layered-pets-design.md`; content (transparent-body outfit art) is the real blocker — props first.
 
 ## Order and what needs Michael's word
 

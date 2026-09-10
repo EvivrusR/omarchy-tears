@@ -19,6 +19,11 @@ WidgetCard {
   readonly property bool bubble: config.bubble !== false
   readonly property bool flip: config.flip === true
   readonly property int intervalSec: Math.max(2, parseInt(config.intervalSec) || 5)
+  property var service: null                       // injected by the service: other pets' states live there
+  readonly property string petName: Pet.petName(config)
+  readonly property var layers: Pet.layerSpecs(listOf(config.layers))
+  readonly property real cellScale: size / Pet.FRAME_H    // cell px → screen px
+  function layerUrl(src) { var p = String(src).replace(/^~/, Quickshell.env("HOME")); return p.charAt(0) === "/" ? "file://" + p : p }
   topInset: bubble ? Math.round((Style.font.caption + Style.space(16)) * scale_) : 0
 
   property var engine: null
@@ -29,11 +34,14 @@ WidgetCard {
   readonly property int row: Pet.rowFor(petState, sheetRows * Pet.FRAME_H, flip)
   readonly property int frames: counts[row] || Pet.FRAMES
 
+  function publish() { if (service) service.publishPet(petName, { state: petState, say: say, watch: watch }) }
   function apply(text) {
     var s
     try { s = JSON.parse(text) } catch (e) { return }
+    s.pets = service ? service.petStates : {}            // previous tick's states of every pet, this one included
     engine = Pet.step(rules, s, engine, Date.now())
     petState = engine.state; say = engine.say
+    publish()
     if (engine.beatUntil > Date.now()) { beatEnd.interval = Math.max(50, engine.beatUntil - Date.now() + 30); beatEnd.restart() }
   }
   Process {
@@ -43,7 +51,8 @@ WidgetCard {
   }
   Timer { interval: root.intervalSec * 1000; running: root.sheetPath !== ""; repeat: true; triggeredOnStart: true; onTriggered: if (!signals.running) signals.running = true }
   // Re-evaluate when a beat ends so the pet doesn't linger until the next poll.
-  Timer { id: beatEnd; repeat: false; onTriggered: if (root.engine) { root.engine = Pet.step(root.rules, root.engine.signals, root.engine, Date.now()); root.petState = root.engine.state; root.say = root.engine.say } }
+  Timer { id: beatEnd; repeat: false; onTriggered: if (root.engine) { root.engine = Pet.step(root.rules, root.engine.signals, root.engine, Date.now()); root.petState = root.engine.state; root.say = root.engine.say; root.publish() } }
+  Component.onCompleted: publish()
 
   // Sheet geometry + padding trim (Hermes rule: a cell whose max alpha ≤ 8 is
   // blank padding). Done once through a hidden canvas, then released.
@@ -67,13 +76,41 @@ WidgetCard {
     }
   }
 
+  // Layers may stick out of the body cell; the container grows to the union
+  // and the body is offset so nothing is clipped by the window.
+  property var layerSizes: ({})
+  readonly property real bodyW: size * Pet.FRAME_W / Pet.FRAME_H
+  readonly property var box: Pet.bounds(layers, bodyW, size, cellScale, layerSizes)
+
+  // A layer: a static prop, or a sheet clipped to the body's current row and frame.
+  component Layer: Item {
+    property var spec: ({})
+    property int index: -1
+    readonly property bool isSheet: spec.kind === "sheet"
+    readonly property int lrow: isSheet ? Pet.rowFor(root.petState, root.sheetRows * Pet.FRAME_H, root.flip) : 0
+    x: spec.x * root.cellScale - root.box.x; y: spec.y * root.cellScale - root.box.y
+    width: isSheet ? root.bodyW : img.implicitWidth * root.cellScale * spec.scale
+    height: isSheet ? root.size : img.implicitHeight * root.cellScale * spec.scale
+    Image {
+      id: img
+      anchors.fill: parent
+      source: root.layerUrl(spec.source)
+      onStatusChanged: if (status === Image.Ready && !parent.isSheet) { var n = ({}); for (var k in root.layerSizes) n[k] = root.layerSizes[k]; n[parent.index] = { w: implicitWidth, h: implicitHeight }; root.layerSizes = n }
+      sourceClipRect: parent.isSheet ? Qt.rect(sprite.currentFrame * Pet.FRAME_W, parent.lrow * Pet.FRAME_H, Pet.FRAME_W, Pet.FRAME_H) : undefined
+      fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true; asynchronous: true
+      transform: Scale { xScale: root.flip && parent.isSheet ? -1 : 1; origin.x: img.width / 2 }
+    }
+  }
+
   Item {
-    width: root.size * Pet.FRAME_W / Pet.FRAME_H
-    height: root.size
+    width: root.box.w
+    height: root.box.h
     visible: root.sheetPath !== ""
+    Repeater { model: root.layers.map(function(l, i) { return { spec: l, i: i } }).filter(function(e) { return !e.spec.front }); Layer { required property var modelData; spec: modelData.spec; index: modelData.i } }
     AnimatedSprite {
       id: sprite
-      anchors.fill: parent
+      x: -root.box.x; y: -root.box.y
+      width: root.bodyW; height: root.size
       source: root.sheetUrl
       frameWidth: Pet.FRAME_W; frameHeight: Pet.FRAME_H
       frameX: 0; frameY: root.row * Pet.FRAME_H
@@ -85,6 +122,7 @@ WidgetCard {
       onFrameYChanged: restart()
       onFrameCountChanged: restart()
     }
+    Repeater { model: root.layers.map(function(l, i) { return { spec: l, i: i } }).filter(function(e) { return e.spec.front }); Layer { required property var modelData; spec: modelData.spec; index: modelData.i } }
   }
   WidgetText {
     visible: root.sheetPath === ""

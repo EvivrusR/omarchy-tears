@@ -1,5 +1,7 @@
 # Linked and layered pets — scope (draft for Michael, 2026-09-10)
 
+> **Status 2026-09-10:** Michael chose props first, spike on Venni, links = pets reading each other's states. Props (static `image` layers), `sheet` layers in lock-step, and links are **built** on `feat/pets`; the hatch spike waits for a spend OK (paid image API).
+
 **Ask:** "linked pets so that you can layer them and allow stuff like outfit or furniture swap-out."
 
 Two separable ideas: **layers** (one pet drawn from several sheets: body + outfit + prop) and
