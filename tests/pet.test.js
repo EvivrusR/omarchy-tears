@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const P = require("../widgets/Pet.js");
 const sig = { claude: { session: 66, weekly: 46, resetInMin: 118 }, battery: { pct: 15, status: "Discharging", charging: false, discharging: true, full: false }, agents: { active: 2 }, cpu: 12.5, mem: 70, gpu: null, hour: 9 };
 
@@ -107,4 +109,44 @@ test("uniqueNames gives later pets on the same sheet a numbered name", () => {
   assert.deepEqual(P.uniqueNames(cfgs), ["teto", null, "teto_2", "teto_3", "jill"]);
   assert.deepEqual(P.uniqueNames([]), []);
   assert.deepEqual(P.uniqueNames([{ type: "pet", name: "teto", enabled: false }, { type: "pet", name: "teto" }]), [null, "teto"]);
+});
+
+const RULES_DIR = path.join(__dirname, "fixtures/rules");
+const readFx = (n) => JSON.parse(fs.readFileSync(path.join(RULES_DIR, n), "utf8"));
+
+test("~ is a case-insensitive substring test; null never matches", () => {
+  const s = { claude: { label: "Session (5-hour)" }, custom: { window: "YouTube — Firefox" }, gpu: null };
+  assert.equal(P.evalExpr("claude.label ~ 'session'", s), true);
+  assert.equal(P.evalExpr("custom.window ~ 'youtube' || custom.window ~ 'netflix'", s), true);
+  assert.equal(P.evalExpr("!(custom.window ~ 'netflix')", s), true);
+  assert.equal(P.evalExpr("gpu ~ 'x'", s), false); assert.equal(P.evalExpr("nope ~ 'x'", s), false);
+  assert.equal(P.evalExpr("cpu ~ '1'", { cpu: 12 }), true);
+});
+
+test("compileRule matches the shared fixture, and presets equal the shared presets fixture", () => {
+  const fx = readFx("compile-basic.json");
+  const got = JSON.parse(JSON.stringify(P.compileRules(fx.rows)));
+  assert.deepEqual(got, fx.expect);
+  assert.deepEqual(JSON.parse(JSON.stringify(P.WATCH)), readFx("presets.json"));
+  assert.deepEqual(P.presetRows("cpu"), P.WATCH.cpu); assert.notEqual(P.presetRows("cpu"), P.WATCH.cpu); assert.deepEqual(P.presetRows("nope"), []);
+  assert.equal(P.rulesFor("battery")[0].if, "battery.full == true");
+});
+
+test("validateRules matches the shared fixture and skips dimensions that are null", () => {
+  const fx = readFx("validate-basic.json");
+  assert.deepEqual(P.validateRules(fx.rows, fx.ctx), fx.expect);
+  assert.deepEqual(P.validateRules(fx.rows.slice(0, 2), { looks: null, signals: null, pets: null }), []);
+  assert.deepEqual(P.validateRules("nope", fx.ctx), []);
+});
+
+test("step: an edge that rises during another beat is held, not lost", () => {
+  const rules = [
+    { kind: "on", if: "a", state: "waving", beat: 1 },
+    { kind: "on", if: "b", state: "jumping", beat: 1, say: "b!" },
+  ];
+  let s = P.step(rules, { a: false, b: false }, null, 0);
+  s = P.step(rules, { a: true, b: false }, s, 100);  assert.equal(s.state, "waving");
+  s = P.step(rules, { a: true, b: true }, s, 200);   assert.equal(s.state, "waving");   // b rose while a beats
+  s = P.step(rules, { a: true, b: true }, s, 1200);  assert.equal(s.state, "jumping"); assert.equal(s.say, "b!");  // held edge fires once a's beat ends
+  s = P.step(rules, { a: true, b: true }, s, 2300);  assert.equal(s.state, "idle");     // no re-fire without a new edge
 });

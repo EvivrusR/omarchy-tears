@@ -1,0 +1,35 @@
+{
+  "ctx": { "looks": ["idle", "running", "waving", "failed", "review"], "signals": ["claude.session", "battery.pct", "cpu", "hour", "custom.window"], "pets": ["jill", "hanna"] },
+  "rows": [
+    { "kind": "range", "signal": "cpu", "min": 30, "max": 60, "look": "review" },
+    { "kind": "range", "signal": "nope.pct", "max": 10, "look": "failed" },
+    { "kind": "range", "signal": "cpu", "min": 60, "max": 30, "look": "review" },
+    { "kind": "range", "signal": "hour", "min": 23, "max": 6, "look": "idle" },
+    { "kind": "range", "signal": "cpu", "min": "lots", "look": "review" },
+    { "kind": "range", "look": "review" },
+    { "kind": "flag", "signal": "battery.pct", "is": true, "look": "jumping" },
+    { "kind": "keyword", "signal": "custom.window", "words": "", "look": "idle" },
+    { "kind": "pet", "pet": "bob", "look": "failed", "then": "waving" },
+    { "kind": "pet", "look": "failed", "then": "waiting" },
+    { "kind": "when", "if": "cpu >> 3", "state": "idle" },
+    { "kind": "when", "if": "", "state": "idle" },
+    { "kind": "when", "if": "pets.hanna.state == 'idle' && claude.weekly > 1", "state": "idle" },
+    { "kind": "on", "if": "custom.window ~ 'x'", "state": "review", "beat": 1 },
+    { "kind": "bogus" }
+  ],
+  "expect": [
+    { "row": 1, "message": "unknown signal 'nope.pct'" },
+    { "row": 2, "message": "min must be below max" },
+    { "row": 4, "message": "min must be a number" },
+    { "row": 5, "message": "needs a signal" },
+    { "row": 6, "message": "look 'jumping' is not on this sheet (shows waving)" },
+    { "row": 7, "message": "needs words" },
+    { "row": 8, "message": "unknown pet 'bob'" },
+    { "row": 9, "message": "needs a pet" },
+    { "row": 9, "message": "look 'waiting' is not on this sheet (shows review)" },
+    { "row": 10, "message": "bad expression: unexpected '3'" },
+    { "row": 11, "message": "empty test" },
+    { "row": 12, "message": "unknown signal 'claude.weekly'" },
+    { "row": 14, "message": "unknown kind 'bogus'" }
+  ]
+}

@@ -4,7 +4,7 @@
 // ---- safe expression evaluator: numbers, true/false/null, dotted signal
 // paths, comparison, && || !, parentheses. Unknown paths are null (falsy).
 function tokenize(src) {
-  var out = [], re = /\s*(>=|<=|==|!=|&&|\|\||[()!<>]|-?\d+(?:\.\d+)?|'[^']*'|"[^"]*"|[A-Za-z_][\w.]*)/g, m, pos = 0
+  var out = [], re = /\s*(>=|<=|==|!=|&&|\|\||~|[()!<>]|-?\d+(?:\.\d+)?|'[^']*'|"[^"]*"|[A-Za-z_][\w.]*)/g, m, pos = 0
   while ((m = re.exec(src)) !== null) {
     if (m.index !== pos) throw new Error("bad token near '" + src.slice(pos, pos + 8) + "'")
     out.push(m[1]); pos = re.lastIndex
@@ -34,8 +34,9 @@ function evalExpr(src, signals) {
   }
   function cmp() {
     var a = atom(), op = peek()
-    if (op === ">=" || op === "<=" || op === ">" || op === "<" || op === "==" || op === "!=") {
+    if (op === ">=" || op === "<=" || op === ">" || op === "<" || op === "==" || op === "!=" || op === "~") {
       next(); var b = atom()
+      if (op === "~") return a === null || b === null ? false : String(a).toLowerCase().indexOf(String(b).toLowerCase()) !== -1
       if (a === null || b === null) return op === "!=" ? a !== b : (op === "==" ? a === b : false)
       switch (op) { case ">=": return a >= b; case "<=": return a <= b; case ">": return a > b; case "<": return a < b; case "==": return a == b; case "!=": return a != b }
     }
@@ -53,44 +54,152 @@ function truthy(v) { return v !== null && v !== undefined && v !== false && v !=
 // first match wins; `on` = edge (false → true) starts a timed beat.
 var WATCH = {
   claude: [
-    { kind: "on", if: "claude.resetInMin > 200", state: "jumping", beat: 2.2, say: "fresh session!" },
-    { kind: "when", if: "claude.session >= 95", state: "failed", say: "session cap {claude.session}%" },
-    { kind: "when", if: "claude.session >= 80", state: "waiting", say: "{claude.session}% used" },
-    { kind: "when", if: "agents.active > 0", state: "running", say: "" },
-    { kind: "when", if: "claude.session >= 50", state: "review", say: "{claude.session}%" },
+    { kind: "range", signal: "claude.resetInMin", min: 200, look: "jumping", beat: 2.2, say: "fresh session!" },
+    { kind: "range", signal: "claude.session", min: 95, look: "failed", say: "session cap {claude.session}%" },
+    { kind: "range", signal: "claude.session", min: 80, look: "waiting", say: "{claude.session}% used" },
+    { kind: "range", signal: "agents.active", min: 1, look: "running", say: "" },
+    { kind: "range", signal: "claude.session", min: 50, look: "review", say: "{claude.session}%" },
   ],
   battery: [
-    { kind: "on", if: "battery.full", state: "waving", beat: 2.2, say: "full!" },
-    { kind: "when", if: "battery.discharging && battery.pct < 10", state: "failed", say: "{battery.pct}%!" },
-    { kind: "when", if: "battery.discharging && battery.pct < 20", state: "waiting", say: "{battery.pct}%" },
-    { kind: "when", if: "battery.charging", state: "running", say: "" },
+    { kind: "flag", signal: "battery.full", is: true, look: "waving", beat: 2.2, say: "full!" },
+    { kind: "range", signal: "battery.pct", max: 10, and: "battery.discharging", look: "failed", say: "{battery.pct}%!" },
+    { kind: "range", signal: "battery.pct", max: 20, and: "battery.discharging", look: "waiting", say: "{battery.pct}%" },
+    { kind: "flag", signal: "battery.charging", is: true, look: "running", say: "" },
   ],
   agents: [
-    { kind: "on", if: "agents.active == 0", state: "waving", beat: 2.2, say: "all done" },
-    { kind: "when", if: "agents.active > 0", state: "running", say: "{agents.active} working" },
+    { kind: "range", signal: "agents.active", max: 1, look: "waving", beat: 2.2, say: "all done" },
+    { kind: "range", signal: "agents.active", min: 1, look: "running", say: "{agents.active} working" },
   ],
   cpu: [
-    { kind: "when", if: "cpu >= 95", state: "failed", say: "cpu {cpu}%" },
-    { kind: "when", if: "cpu >= 60", state: "running", say: "cpu {cpu}%" },
-    { kind: "when", if: "cpu >= 30", state: "review", say: "" },
+    { kind: "range", signal: "cpu", min: 95, look: "failed", say: "cpu {cpu}%" },
+    { kind: "range", signal: "cpu", min: 60, look: "running", say: "cpu {cpu}%" },
+    { kind: "range", signal: "cpu", min: 30, look: "review", say: "" },
   ],
   mem: [
-    { kind: "when", if: "mem >= 95", state: "failed", say: "mem {mem}%" },
-    { kind: "when", if: "mem >= 80", state: "waiting", say: "mem {mem}%" },
-    { kind: "when", if: "mem >= 50", state: "review", say: "" },
+    { kind: "range", signal: "mem", min: 95, look: "failed", say: "mem {mem}%" },
+    { kind: "range", signal: "mem", min: 80, look: "waiting", say: "mem {mem}%" },
+    { kind: "range", signal: "mem", min: 50, look: "review", say: "" },
   ],
   gpu: [
-    { kind: "when", if: "gpu >= 95", state: "failed", say: "gpu {gpu}%" },
-    { kind: "when", if: "gpu >= 60", state: "running", say: "gpu {gpu}%" },
-    { kind: "when", if: "gpu >= 30", state: "review", say: "" },
+    { kind: "range", signal: "gpu", min: 95, look: "failed", say: "gpu {gpu}%" },
+    { kind: "range", signal: "gpu", min: 60, look: "running", say: "gpu {gpu}%" },
+    { kind: "range", signal: "gpu", min: 30, look: "review", say: "" },
     { kind: "when", if: "gpu == null", state: "idle", say: "no gpu here" },
   ],
 }
 var STATES = ["idle", "running", "waving", "jumping", "failed", "waiting", "review"]
 
+var SIGNAL_KEYS = ["claude.session", "claude.weekly", "claude.resetInMin", "claude.label", "battery.pct", "battery.status", "battery.charging", "battery.discharging", "battery.full", "agents.active", "cpu", "mem", "gpu", "load", "temp", "hour"]
+var ROW_KINDS = ["range", "flag", "keyword", "pet", "when", "on"]
+
+function q(s) { return "'" + String(s).replace(/'/g, "") + "'" }
+function petKey(name) { return String(name || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_") }
+function hasNum(v) { return v !== undefined && v !== null && v !== "" && !isNaN(Number(v)) }
+function isSet(v) { return v !== undefined && v !== null && v !== "" }
+
+// A structured row → an engine rule. Raw when/on rows pass through.
+function compileRule(row) {
+  if (!row || typeof row !== "object") return null
+  var kind = String(row.kind || "when"), test = null, state = row.look
+  if (kind === "when" || kind === "on") return { kind: kind, if: String(row.if || ""), state: String(row.state || "idle"), beat: kind === "on" ? Number(row.beat) || 1.6 : undefined, say: String(row.say || "") }
+  var sig = String(row.signal || "").trim()
+  if (kind === "range") {
+    var mn = Number(row.min), mx = Number(row.max), hasMin = hasNum(row.min), hasMax = hasNum(row.max)
+    if (hasMin && hasMax) test = mn > mx ? "(" + sig + " >= " + mn + " || " + sig + " < " + mx + ")" : "(" + sig + " >= " + mn + " && " + sig + " < " + mx + ")"
+    else if (hasMin) test = sig + " >= " + mn
+    else if (hasMax) test = sig + " < " + mx
+    else test = sig + " != null"
+  } else if (kind === "flag") {
+    test = sig + " == " + (row.is === false || String(row.is) === "false" ? "false" : "true")
+  } else if (kind === "keyword") {
+    var words = String(row.words || "").split(",").map(function(w) { return w.trim() }).filter(function(w) { return w !== "" })
+    var match = String(row.match || "any")
+    if (!words.length) test = "false"
+    else {
+      var parts = words.map(function(w) { return sig + " ~ " + q(w) })
+      test = match === "all" ? "(" + parts.join(" && ") + ")" : match === "none" ? "!(" + parts.join(" || ") + ")" : "(" + parts.join(" || ") + ")"
+    }
+  } else if (kind === "pet") {
+    test = "pets." + petKey(row.pet) + ".state == " + q(row.look)
+    state = row.then
+  } else return null
+  if (isSet(row.and)) test = test + " && (" + String(row.and) + ")"
+  var beat = hasNum(row.beat) && Number(row.beat) > 0 ? Number(row.beat) : undefined
+  return { kind: beat ? "on" : "when", if: test, state: String(state || "idle"), beat: beat, say: String(row.say || "") }
+}
+function compileRules(rows) {
+  var out = []
+  for (var i = 0; i < (rows || []).length; i++) { var r = compileRule(rows[i]); if (r) out.push(r) }
+  return out
+}
+function presetRows(watch) { return JSON.parse(JSON.stringify(WATCH[String(watch)] || [])) }
+
+// Identifiers an expression reads (dotted paths), for the validator. Parses
+// the expression first (against empty signals) so syntax errors surface with
+// the evaluator's own messages ("unexpected '3'", "missing )", "unexpected end").
+function identifiers(src) {
+  evalExpr(String(src || ""), {})
+  var out = [], toks = tokenize(String(src || ""))
+  for (var i = 0; i < toks.length; i++) { var t = toks[i]; if (/^[A-Za-z_]/.test(t) && t !== "true" && t !== "false" && t !== "null") out.push(t) }
+  return out
+}
+function knownSignal(path, ctx) {
+  if (!ctx || !ctx.signals) return true
+  if (ctx.signals.indexOf(path) !== -1) return true
+  var m = /^pets\.([a-z0-9_]+)\.(state|say|watch)$/.exec(path)
+  if (m) return !ctx.pets || ctx.pets.indexOf(m[1]) !== -1
+  return false
+}
+// ctx = { looks: string[]|null, signals: string[]|null, pets: string[]|null }; null skips that check.
+function validateRules(rows, ctx) {
+  var out = []
+  if (!Array.isArray(rows)) return out
+  ctx = ctx || {}
+  function push(i, m) { out.push({ row: i, message: m }) }
+  function checkLook(i, name) {
+    if (!ctx.looks || !ctx.looks.length || !isSet(name)) return
+    if (ctx.looks.indexOf(String(name)) === -1) push(i, "look '" + name + "' is not on this sheet (shows " + resolveLook(name, ctx.looks) + ")")
+  }
+  function checkSignal(i, sig) { if (!knownSignal(sig, ctx)) push(i, "unknown signal '" + sig + "'") }
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i]
+    if (!r || typeof r !== "object") { push(i, "not a row"); continue }
+    var kind = String(r.kind || "when")
+    if (ROW_KINDS.indexOf(kind) === -1) { push(i, "unknown kind '" + kind + "'"); continue }
+    if (kind === "when" || kind === "on") {
+      var src = String(r.if || "").trim()
+      if (!src) push(i, "empty test")
+      else {
+        try { var ids = identifiers(src); for (var k = 0; k < ids.length; k++) checkSignal(i, ids[k]) }
+        catch (e) { push(i, "bad expression: " + e.message) }
+      }
+      checkLook(i, r.state)
+      continue
+    }
+    if (kind === "pet") {
+      if (!isSet(r.pet)) push(i, "needs a pet")
+      else if (ctx.pets && ctx.pets.indexOf(petKey(r.pet)) === -1) push(i, "unknown pet '" + r.pet + "'")
+      checkLook(i, r.then)
+    } else {
+      var sig = String(r.signal || "").trim()
+      if (!sig) push(i, "needs a signal")
+      else checkSignal(i, sig)
+      if (kind === "range") {
+        if (isSet(r.min) && !hasNum(r.min)) push(i, "min must be a number")
+        if (isSet(r.max) && !hasNum(r.max)) push(i, "max must be a number")
+        if (hasNum(r.min) && hasNum(r.max) && Number(r.min) >= Number(r.max) && sig !== "hour") push(i, "min must be below max")
+      }
+      if (kind === "keyword" && !String(r.words || "").split(",").some(function(w) { return w.trim() !== "" })) push(i, "needs words")
+      checkLook(i, r.look)
+    }
+    if (isSet(r.and)) { try { var ids2 = identifiers(r.and); for (var j = 0; j < ids2.length; j++) checkSignal(i, ids2[j]) } catch (e2) { push(i, "bad expression: " + e2.message) } }
+  }
+  return out
+}
+
 function rulesFor(watch, custom) {
-  if (String(watch) === "custom") return Array.isArray(custom) ? custom : []
-  return WATCH[String(watch)] || []
+  if (String(watch) === "custom") return Array.isArray(custom) ? compileRules(custom) : []
+  return compileRules(WATCH[String(watch)] || [])
 }
 
 function fill(text, signals) {
@@ -108,8 +217,9 @@ function step(rules, signals, prev, now) {
     try { v = truthy(evalExpr(r.if, signals)) } catch (e) { v = false }
     if (String(r.kind) === "on") {
       var was = prev && prev.edges ? prev.edges[i] : undefined
-      edges[i] = v
-      if (v && was === false && !beatUntil) { beatUntil = now + Math.max(0.2, Number(r.beat) || 1.6) * 1000; beatState = String(r.state || "waving"); beatSay = fill(r.say, signals) }
+      var rising = v && was === false
+      if (rising && !beatUntil) { beatUntil = now + Math.max(0.2, Number(r.beat) || 1.6) * 1000; beatState = String(r.state || "waving"); beatSay = fill(r.say, signals); edges[i] = true }
+      else edges[i] = rising ? false : v        // a beat is running: hold this edge so it fires when the beat ends
     } else if (v && !res) res = { state: String(r.state || "idle"), say: fill(r.say, signals) }
   }
   var out = res || { state: "idle", say: "" }
@@ -248,4 +358,4 @@ function uniqueNames(configs) {
   return out
 }
 
-if (typeof module !== "undefined") module.exports = { layerSpec, layerSpecs, petName, uniqueNames, bounds, tokenize, evalExpr, lookup, WATCH, STATES, rulesFor, fill, step, rowFor, rowNames, trimCounts, LOOKS, FALLBACK, trimInfo, looks, resolveLook, FRAME_W, FRAME_H, COLS, FRAMES, LOOP_MS }
+if (typeof module !== "undefined") module.exports = { layerSpec, layerSpecs, petName, uniqueNames, bounds, tokenize, evalExpr, lookup, WATCH, STATES, rulesFor, fill, step, rowFor, rowNames, trimCounts, LOOKS, FALLBACK, trimInfo, looks, resolveLook, FRAME_W, FRAME_H, COLS, FRAMES, LOOP_MS, SIGNAL_KEYS, ROW_KINDS, compileRule, compileRules, presetRows, validateRules, petKey }

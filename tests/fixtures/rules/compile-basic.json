@@ -1,0 +1,38 @@
+{
+  "rows": [
+    { "kind": "range", "signal": "battery.pct", "max": 10, "look": "failed", "say": "{battery.pct}%!" },
+    { "kind": "range", "signal": "hour", "min": 23, "max": 6, "look": "waiting", "say": "zzz" },
+    { "kind": "range", "signal": "cpu", "min": 30, "max": 60, "look": "review" },
+    { "kind": "range", "signal": "gpu", "look": "idle" },
+    { "kind": "flag", "signal": "battery.charging", "is": true, "look": "running" },
+    { "kind": "flag", "signal": "battery.discharging", "is": false, "look": "idle" },
+    { "kind": "keyword", "signal": "custom.window", "words": "youtube, netflix", "match": "any", "look": "review", "say": "slacking?" },
+    { "kind": "keyword", "signal": "claude.label", "words": "session,5-hour", "match": "all", "look": "review" },
+    { "kind": "keyword", "signal": "claude.label", "words": "it's", "match": "none", "look": "idle" },
+    { "kind": "keyword", "signal": "claude.label", "words": "", "look": "idle" },
+    { "kind": "pet", "pet": "Jill", "look": "failed", "then": "waving", "beat": 2, "say": "you ok?" },
+    { "kind": "pet", "pet": "jill", "look": "running", "then": "running" },
+    { "kind": "range", "signal": "mem", "min": 90, "and": "cpu > 50", "look": "failed" },
+    { "kind": "when", "if": "cpu >= 95", "state": "failed", "say": "cpu {cpu}%" },
+    { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5 },
+    { "kind": "bogus" },
+    "not a row"
+  ],
+  "expect": [
+    { "kind": "when", "if": "battery.pct < 10", "state": "failed", "say": "{battery.pct}%!" },
+    { "kind": "when", "if": "(hour >= 23 || hour < 6)", "state": "waiting", "say": "zzz" },
+    { "kind": "when", "if": "(cpu >= 30 && cpu < 60)", "state": "review", "say": "" },
+    { "kind": "when", "if": "gpu != null", "state": "idle", "say": "" },
+    { "kind": "when", "if": "battery.charging == true", "state": "running", "say": "" },
+    { "kind": "when", "if": "battery.discharging == false", "state": "idle", "say": "" },
+    { "kind": "when", "if": "(custom.window ~ 'youtube' || custom.window ~ 'netflix')", "state": "review", "say": "slacking?" },
+    { "kind": "when", "if": "(claude.label ~ 'session' && claude.label ~ '5-hour')", "state": "review", "say": "" },
+    { "kind": "when", "if": "!(claude.label ~ 'its')", "state": "idle", "say": "" },
+    { "kind": "when", "if": "false", "state": "idle", "say": "" },
+    { "kind": "on", "if": "pets.jill.state == 'failed'", "state": "waving", "beat": 2, "say": "you ok?" },
+    { "kind": "when", "if": "pets.jill.state == 'running'", "state": "running", "say": "" },
+    { "kind": "when", "if": "mem >= 90 && (cpu > 50)", "state": "failed", "say": "" },
+    { "kind": "when", "if": "cpu >= 95", "state": "failed", "say": "cpu {cpu}%" },
+    { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5, "say": "" }
+  ]
+}

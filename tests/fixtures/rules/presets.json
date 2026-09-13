@@ -1,0 +1,35 @@
+{
+  "claude": [
+    { "kind": "range", "signal": "claude.resetInMin", "min": 200, "look": "jumping", "beat": 2.2, "say": "fresh session!" },
+    { "kind": "range", "signal": "claude.session", "min": 95, "look": "failed", "say": "session cap {claude.session}%" },
+    { "kind": "range", "signal": "claude.session", "min": 80, "look": "waiting", "say": "{claude.session}% used" },
+    { "kind": "range", "signal": "agents.active", "min": 1, "look": "running", "say": "" },
+    { "kind": "range", "signal": "claude.session", "min": 50, "look": "review", "say": "{claude.session}%" }
+  ],
+  "battery": [
+    { "kind": "flag", "signal": "battery.full", "is": true, "look": "waving", "beat": 2.2, "say": "full!" },
+    { "kind": "range", "signal": "battery.pct", "max": 10, "and": "battery.discharging", "look": "failed", "say": "{battery.pct}%!" },
+    { "kind": "range", "signal": "battery.pct", "max": 20, "and": "battery.discharging", "look": "waiting", "say": "{battery.pct}%" },
+    { "kind": "flag", "signal": "battery.charging", "is": true, "look": "running", "say": "" }
+  ],
+  "agents": [
+    { "kind": "range", "signal": "agents.active", "max": 1, "look": "waving", "beat": 2.2, "say": "all done" },
+    { "kind": "range", "signal": "agents.active", "min": 1, "look": "running", "say": "{agents.active} working" }
+  ],
+  "cpu": [
+    { "kind": "range", "signal": "cpu", "min": 95, "look": "failed", "say": "cpu {cpu}%" },
+    { "kind": "range", "signal": "cpu", "min": 60, "look": "running", "say": "cpu {cpu}%" },
+    { "kind": "range", "signal": "cpu", "min": 30, "look": "review", "say": "" }
+  ],
+  "mem": [
+    { "kind": "range", "signal": "mem", "min": 95, "look": "failed", "say": "mem {mem}%" },
+    { "kind": "range", "signal": "mem", "min": 80, "look": "waiting", "say": "mem {mem}%" },
+    { "kind": "range", "signal": "mem", "min": 50, "look": "review", "say": "" }
+  ],
+  "gpu": [
+    { "kind": "range", "signal": "gpu", "min": 95, "look": "failed", "say": "gpu {gpu}%" },
+    { "kind": "range", "signal": "gpu", "min": 60, "look": "running", "say": "gpu {gpu}%" },
+    { "kind": "range", "signal": "gpu", "min": 30, "look": "review", "say": "" },
+    { "kind": "when", "if": "gpu == null", "state": "idle", "say": "no gpu here" }
+  ]
+}
