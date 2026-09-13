@@ -1,0 +1,2 @@
+{ "config": { "widgets": [ { "type": "pet", "sheet": "/x/spritesheet.webp", "watch": "custom", "rules": [ { "kind": "bracket", "signal": "cpu" } ] } ] },
+  "expect": { "widgets": 1, "errors": 1, "warnings": 0, "messages": [ "widget 0: rules.0 has unknown kind 'bracket'" ] } }

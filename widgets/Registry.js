@@ -95,6 +95,7 @@ function validateEntry(entry, index, registry, messages) {
   var known = {}
   for (var i = 0; i < fields.length; i++) {
     var f = fields[i]
+    if (f.type === "petdex") continue
     known[f.key] = true
     if (f.type === "type") continue
     if (entry[f.key] === undefined) continue

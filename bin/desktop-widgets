@@ -4,7 +4,7 @@ homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
 
 Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
 two engines identical."""
-import argparse, datetime, glob, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, contextlib, datetime, glob, io, json, math, os, re, shutil, subprocess, sys, tempfile
 
 PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -199,6 +199,7 @@ def validate_config(parsed, registry):
             push("error", f"unknown type '{type_}'", "type"); continue
         known = set()
         for f in fields_for(type_, registry):
+            if f["type"] == "petdex": continue
             known.add(f["key"])
             if f["type"] == "type" or f["key"] not in entry: continue
             _check_field(f, entry[f["key"]], lambda level, message, key=f["key"]: push(level, message, key))
@@ -296,7 +297,8 @@ def cmd_types(args, ctx):
             if "default" in f: extra.append(f"default {json.dumps(f['default'])}")
             if "options" in f: extra.append(("one of " if f["type"] == "enum" else "any of ") + ", ".join(f["options"]))
             if "min" in f or "max" in f: extra.append(f"{_num(f['min']) if 'min' in f else ''}..{_num(f['max']) if 'max' in f else ''}")
-            print(f"  {f['key']:<20} {f['type']:<11} {'; '.join(extra)}" + (f"  — {f['description']}" if f.get("description") else ""))
+            type_disp = f["type"] + " (editor control)" if f["type"] == "petdex" else f["type"]
+            print(f"  {f['key']:<20} {type_disp:<11} {'; '.join(extra)}" + (f"  — {f['description']}" if f.get("description") else ""))
         return 0
     for name, t in reg["types"].items():
         tag = " (drop-in)" if t.get("dropIn") else ""
@@ -650,7 +652,382 @@ def cmd_apps(args, ctx):
     return 0
 
 
+# ---------------------------------------------------------------- pet rules (twin of widgets/Pet.js; tests/fixtures/rules keep them equal)
+PET_LOOKS = ["idle", "running", "waving", "jumping", "failed", "waiting", "review"]
+PET_FALLBACK = {"jumping": ["waving", "idle"], "waiting": ["review", "idle"], "failed": ["waiting", "idle"], "running": ["idle"], "review": ["idle"], "waving": ["idle"], "idle": []}
+SIGNAL_KEYS = ["claude.session", "claude.weekly", "claude.resetInMin", "claude.label", "battery.pct", "battery.status", "battery.charging", "battery.discharging", "battery.full", "agents.active", "cpu", "mem", "gpu", "load", "temp", "hour"]
+ROW_KINDS = ["range", "flag", "keyword", "pet", "when", "on"]
+PET_WATCH = {
+    "claude": [
+        {"kind": "range", "signal": "claude.resetInMin", "min": 200, "look": "jumping", "beat": 2.2, "say": "fresh session!"},
+        {"kind": "range", "signal": "claude.session", "min": 95, "look": "failed", "say": "session cap {claude.session}%"},
+        {"kind": "range", "signal": "claude.session", "min": 80, "look": "waiting", "say": "{claude.session}% used"},
+        {"kind": "range", "signal": "agents.active", "min": 1, "look": "running", "say": ""},
+        {"kind": "range", "signal": "claude.session", "min": 50, "look": "review", "say": "{claude.session}%"}],
+    "battery": [
+        {"kind": "flag", "signal": "battery.full", "is": True, "look": "waving", "beat": 2.2, "say": "full!"},
+        {"kind": "range", "signal": "battery.pct", "max": 10, "and": "battery.discharging", "look": "failed", "say": "{battery.pct}%!"},
+        {"kind": "range", "signal": "battery.pct", "max": 20, "and": "battery.discharging", "look": "waiting", "say": "{battery.pct}%"},
+        {"kind": "flag", "signal": "battery.charging", "is": True, "look": "running", "say": ""}],
+    "agents": [
+        {"kind": "range", "signal": "agents.active", "max": 1, "look": "waving", "beat": 2.2, "say": "all done"},
+        {"kind": "range", "signal": "agents.active", "min": 1, "look": "running", "say": "{agents.active} working"}],
+    "cpu": [
+        {"kind": "range", "signal": "cpu", "min": 95, "look": "failed", "say": "cpu {cpu}%"},
+        {"kind": "range", "signal": "cpu", "min": 60, "look": "running", "say": "cpu {cpu}%"},
+        {"kind": "range", "signal": "cpu", "min": 30, "look": "review", "say": ""}],
+    "mem": [
+        {"kind": "range", "signal": "mem", "min": 95, "look": "failed", "say": "mem {mem}%"},
+        {"kind": "range", "signal": "mem", "min": 80, "look": "waiting", "say": "mem {mem}%"},
+        {"kind": "range", "signal": "mem", "min": 50, "look": "review", "say": ""}],
+    "gpu": [
+        {"kind": "range", "signal": "gpu", "min": 95, "look": "failed", "say": "gpu {gpu}%"},
+        {"kind": "range", "signal": "gpu", "min": 60, "look": "running", "say": "gpu {gpu}%"},
+        {"kind": "range", "signal": "gpu", "min": 30, "look": "review", "say": ""},
+        {"kind": "when", "if": "gpu == null", "state": "idle", "say": "no gpu here"}],
+}
+_TOKEN = re.compile(r"\s*(>=|<=|==|!=|&&|\|\||~|[()!<>]|-?\d+(?:\.\d+)?|'[^']*'|\"[^\"]*\"|[A-Za-z_][\w.]*)")
+
+
+def tokenize_expr(src):
+    out, pos, n = [], 0, len(src)
+    while pos < n:
+        m = _TOKEN.match(src, pos)
+        if not m or m.end() == pos:
+            if src[pos:].strip() == "": break
+            raise ValueError(f"bad token near '{src[pos:pos + 8]}'")
+        out.append(m.group(1)); pos = m.end()
+    return out
+
+
+def check_expr(src):
+    """Parse like Pet.js evalExpr (same error messages) and return the identifiers it reads."""
+    t = tokenize_expr(str(src or "")); i = [0]
+    def peek(): return t[i[0]] if i[0] < len(t) else None
+    def nxt():
+        v = peek(); i[0] += 1; return v
+    def atom():
+        k = nxt()
+        if k is None: raise ValueError("unexpected end")
+        if k == "(":
+            or_expr()
+            if nxt() != ")": raise ValueError("missing )")
+        elif k == "!": atom()
+    def cmp():
+        atom()
+        if peek() in (">=", "<=", ">", "<", "==", "!=", "~"): nxt(); atom()
+    def and_expr():
+        cmp()
+        while peek() == "&&": nxt(); cmp()
+    def or_expr():
+        and_expr()
+        while peek() == "||": nxt(); and_expr()
+    or_expr()
+    if i[0] != len(t): raise ValueError(f"unexpected '{t[i[0]]}'")
+    return [x for x in t if re.match(r"[A-Za-z_]", x) and x not in ("true", "false", "null")]
+
+
+_NUM_STR = re.compile(r"^-?\d+(\.\d+)?$")
+
+
+def _has_num(v):
+    if isinstance(v, bool): return False
+    if isinstance(v, (int, float)): return math.isfinite(v)
+    if isinstance(v, str): return bool(_NUM_STR.match(v))
+    return False
+
+
+def _is_set(v): return v is not None and v != ""
+
+
+def _q(s): return "'" + str(s).replace("'", "") + "'"
+
+
+def pet_key(name): return re.sub(r"[^a-z0-9_]+", "_", str(name or "").strip().lower())
+
+
+def resolve_look(state, present):
+    for name in [str(state)] + PET_FALLBACK.get(str(state), ["idle"]):
+        if not present or name in present: return name
+    return "idle"
+
+
+def compile_rule(row):
+    if not isinstance(row, dict): return None
+    kind = str(row.get("kind") or "when"); state = row.get("look")
+    if kind in ("when", "on"):
+        out = {"kind": kind, "if": str(row.get("if") or ""), "state": str(row.get("state") or "idle")}
+        if kind == "on": out["beat"] = float(row["beat"]) if _has_num(row.get("beat")) and float(row["beat"]) > 0 else 1.6
+        out["say"] = str(row.get("say") or ""); return _tidy(out)
+    sig = str(row.get("signal") or "").strip()
+    if kind == "range":
+        has_min, has_max = _has_num(row.get("min")), _has_num(row.get("max"))
+        mn = _num(float(row["min"])) if has_min else None; mx = _num(float(row["max"])) if has_max else None
+        if has_min and has_max:
+            test = f"({sig} >= {mn} || {sig} < {mx})" if float(row["min"]) > float(row["max"]) else f"({sig} >= {mn} && {sig} < {mx})"
+        elif has_min: test = f"{sig} >= {mn}"
+        elif has_max: test = f"{sig} < {mx}"
+        else: test = f"{sig} != null"
+    elif kind == "flag":
+        test = f"{sig} == " + ("false" if row.get("is") is False or str(row.get("is")) == "false" else "true")
+    elif kind == "keyword":
+        words = [w.strip() for w in str(row.get("words") or "").split(",") if w.strip()]
+        match = str(row.get("match") or "any")
+        if not words: test = "false"
+        else:
+            parts = [f"{sig} ~ {_q(w)}" for w in words]
+            test = "(" + " && ".join(parts) + ")" if match == "all" else ("!(" + " || ".join(parts) + ")" if match == "none" else "(" + " || ".join(parts) + ")")
+    elif kind == "pet":
+        test = f"pets.{pet_key(row.get('pet'))}.state == {_q(row.get('look'))}"; state = row.get("then")
+    else: return None
+    if _is_set(row.get("and")): test = f"{test} && ({row['and']})"
+    beat = float(row["beat"]) if _has_num(row.get("beat")) and float(row["beat"]) > 0 else None
+    out = {"kind": "on" if beat else "when", "if": test, "state": str(state or "idle")}
+    if beat: out["beat"] = beat
+    out["say"] = str(row.get("say") or "")
+    return _tidy(out)
+
+
+def _tidy(rule):
+    """Match the JS shape after JSON round-trip: integral beats print as ints."""
+    if "beat" in rule and float(rule["beat"]).is_integer(): rule["beat"] = int(rule["beat"])
+    return rule
+
+
+def compile_rules(rows):
+    return [r for r in (compile_rule(x) for x in (rows or [])) if r]
+
+
+def _identifiers(src): return check_expr(src)
+
+
+def _known_signal(path, ctx):
+    sigs = (ctx or {}).get("signals")
+    if sigs is None: return True
+    if path in sigs: return True
+    m = re.match(r"^pets\.([a-z0-9_]+)\.(state|say|watch)$", path)
+    if m: return ctx.get("pets") is None or m.group(1) in ctx["pets"]
+    return False
+
+
+def validate_rules(rows, ctx):
+    """[{row, message}] — same messages as Pet.validateRules; ctx keys looks/signals/pets, None skips."""
+    out = []
+    if not isinstance(rows, list): return out
+    ctx = ctx or {}; looks = ctx.get("looks")
+    push = lambda i, m: out.append({"row": i, "message": m})
+    def check_look(i, name):
+        if not looks or not _is_set(name): return
+        if str(name) not in looks: push(i, f"look '{name}' is not on this sheet (shows {resolve_look(name, looks)})")
+    def check_signal(i, sig):
+        if not _known_signal(sig, ctx): push(i, f"unknown signal '{sig}'")
+    def check_expr(i, src):
+        try:
+            for ident in _identifiers(src): check_signal(i, ident)
+        except ValueError as e: push(i, f"bad expression: {e}")
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict): push(i, "not a row"); continue
+        kind = str(r.get("kind") or "when")
+        if kind not in ROW_KINDS: push(i, f"unknown kind '{kind}'"); continue
+        if kind in ("when", "on"):
+            src = str(r.get("if") or "").strip()
+            if not src: push(i, "empty test")
+            else: check_expr(i, src)
+            check_look(i, r.get("state")); continue
+        if kind == "pet":
+            if not _is_set(r.get("pet")): push(i, "needs a pet")
+            elif ctx.get("pets") is not None and pet_key(r.get("pet")) not in ctx["pets"]: push(i, f"unknown pet '{r.get('pet')}'")
+            if not _is_set(r.get("look")): push(i, "needs a look")
+            check_look(i, r.get("then"))
+        else:
+            sig = str(r.get("signal") or "").strip()
+            if not sig: push(i, "needs a signal")
+            else: check_signal(i, sig)
+            if kind == "range":
+                if _is_set(r.get("min")) and not _has_num(r.get("min")): push(i, "min must be a number")
+                if _is_set(r.get("max")) and not _has_num(r.get("max")): push(i, "max must be a number")
+                if _has_num(r.get("min")) and _has_num(r.get("max")) and float(r["min"]) >= float(r["max"]) and sig != "hour": push(i, "min must be below max")
+            if kind == "keyword" and not any(w.strip() for w in str(r.get("words") or "").split(",")): push(i, "needs words")
+            check_look(i, r.get("look"))
+        if _is_set(r.get("and")): check_expr(i, r["and"])
+    return out
+
+
+def rule_ctx_for(widgets, index, looks=None):
+    """Validation context for widget `index`: signal catalogue (+ its custom keys) and the other pets' names.
+    Names come from unique_names, the same dedup the editor publishes as pets.<name>, so a `pet` row naming
+    `teto_2` validates against the same name the running pet actually publishes."""
+    entry = widgets[index]
+    sigs = list(SIGNAL_KEYS) + [f"custom.{s.get('key')}" for s in entry.get("signals") or [] if isinstance(s, dict) and s.get("key")]
+    names = unique_names(widgets)
+    me = names[index] if 0 <= index < len(names) else None
+    pets = [n for n in names if n is not None and n != me]
+    return {"looks": looks, "signals": sigs, "pets": pets}
+
+
+def pet_name_of(entry):
+    n = str(entry.get("name") or "").strip()
+    if n: return pet_key(n)
+    parts = [p for p in str(entry.get("sheet") or "").rstrip("/").split("/")]
+    return pet_key(parts[-2] if len(parts) >= 2 else (parts[-1] if parts and parts[-1] else "pet"))
+
+
+def unique_names(configs):
+    """Published pet names for a whole widget list, mirroring Pet.uniqueNames: non-pets and disabled pets are
+    None and consume no name (a disabled `teto` must not bump the enabled one to `teto_2`); a repeated enabled
+    name becomes name_2, name_3…"""
+    seen, out = {}, []
+    for c in configs or []:
+        if not isinstance(c, dict) or str(c.get("type")) != "pet" or c.get("enabled") is False:
+            out.append(None); continue
+        base = pet_name_of(c)
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        out.append(base if n == 1 else f"{base}_{n}")
+    return out
+
+
+def cmd_pet(args, ctx):
+    try:
+        args.index = int(args.target) if args.op != "fetch" and args.target not in (None, "") else None
+    except ValueError:
+        print("index must be a number", file=sys.stderr); return 2
+    if args.op == "fetch":
+        if not args.target: print("pet fetch needs a petdex URL or slug", file=sys.stderr); return 2
+        root_dir = os.path.join(_config_base(), "omarchy", "desktop-widgets.pets")
+        try: r = fetch_pet(args.target, root_dir, replace=args.replace)
+        except FetchError as e: print(str(e), file=sys.stderr); return e.code
+        if args.add or args.widget is not None:
+            def fn(doc, widgets):
+                if args.widget is not None:
+                    e = index_arg(widgets, args.widget)
+                    if e.get("type") != "pet": raise ValueError(f"widget {args.widget} is not a pet")
+                    e["sheet"] = r["sheet"]; e["name"] = r["slug"]
+                else: widgets.append({"type": "pet", "sheet": r["sheet"], "name": r["slug"]})
+            if args.json:   # --json wants only the result dict on stdout; mutate's own errors still go to stderr
+                with contextlib.redirect_stdout(io.StringIO()): code = mutate(args, ctx, fn, create=True)
+            else:
+                code = mutate(args, ctx, fn, create=True)
+            if code: return code
+        if args.json: print(json.dumps(r)); return 0
+        have = [l for l in r["looks"] if l["present"]]
+        print(f"{r['slug']}  {r['name']}  {r['license']}\n{r['path']}\n{len(have)} looks: " + ", ".join(l["name"] for l in have)); return 0
+    if args.op == "expand":
+        if args.index is None: print("pet expand needs a widget index", file=sys.stderr); return 2
+        def fn(doc, widgets):
+            e = index_arg(widgets, args.index)
+            if e.get("type") != "pet": raise ValueError(f"widget {args.index} is not a pet")
+            watch = str(e.get("watch") or "claude")
+            if watch == "custom": raise ValueError(f"widget {args.index} is already custom (edit its rules)")
+            e["rules"] = json.loads(json.dumps(PET_WATCH.get(watch, []))); e["watch"] = "custom"
+        return mutate(args, ctx, fn)
+    if args.op == "check":
+        try: parsed, _ = read_config(ctx["path"])
+        except ValueError as e: print(f"ERROR   {e}", file=sys.stderr); return 1
+        widgets = parsed.get("widgets") if isinstance(parsed, dict) else parsed
+        if not isinstance(widgets, list):
+            print("ERROR   config must be a list of widgets or an object with a widgets list", file=sys.stderr); return 1
+        if args.index is not None:
+            try: w0 = index_arg(widgets, args.index)
+            except ValueError as e: print(str(e), file=sys.stderr); return 2
+            if not isinstance(w0, dict) or w0.get("type") != "pet":
+                print(f"widget {args.index} is not a pet", file=sys.stderr); return 2
+        report = {}
+        for i, w in enumerate(widgets):
+            if not isinstance(w, dict) or w.get("type") != "pet": continue
+            if args.index is not None and i != args.index: continue
+            looks = None
+            info = sheet_looks(os.path.expanduser(str(w.get("sheet") or ""))) if w.get("sheet") else None
+            if info and info.get("measured"): looks = [l["name"] for l in info["looks"] if l["present"]]
+            report[str(i)] = validate_rules(w.get("rules") or [], rule_ctx_for(widgets, i, looks)) if str(w.get("watch") or "claude") == "custom" else []
+        if args.json: print(json.dumps({"widgets": report})); return 0
+        for i, msgs in report.items():
+            for m in msgs: print(f"widget {i} row {m['row']}: {m['message']}" if args.index is None else f"row {m['row']}: {m['message']}")
+        if not any(report.values()): print("rules ok")
+        return 0
+    return 2
+
+
 # ---------------------------------------------------------------- pets (sprite sheets on this machine)
+FRAME_W, FRAME_H, COLS = 192, 208, 8
+CODEX_ROWS = ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"]
+LEGACY_ROWS = ["idle", "waving", "running", "failed", "review", "jumping", "extra1", "extra2"]
+
+
+def image_geometry(head):
+    """(fmt, w, h) from the first bytes of a PNG or WebP file, or None."""
+    import struct
+    try:
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+            w, h = struct.unpack(">II", head[16:24]); return ("png", w, h)
+        if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+            tag = head[12:16]
+            if tag == b"VP8X":
+                w = int.from_bytes(head[24:27], "little") + 1; h = int.from_bytes(head[27:30], "little") + 1; return ("webp", w, h)
+            if tag == b"VP8L":
+                if head[20] != 0x2f: return None
+                b = int.from_bytes(head[21:25], "little"); return ("webp", (b & 0x3fff) + 1, ((b >> 14) & 0x3fff) + 1)
+            if tag == b"VP8 ":
+                if head[23:26] != b"\x9d\x01\x2a": return None
+                w, h = struct.unpack("<HH", head[26:30]); return ("webp", w & 0x3fff, h & 0x3fff)
+    except (struct.error, IndexError): return None
+    return None
+
+
+def row_names(rows):
+    if rows == 8: return LEGACY_ROWS
+    return CODEX_ROWS + [f"extra{r}" for r in range(10, rows + 1)]
+
+
+def _cell_alpha(path, rows):
+    """Max alpha per cell (row-major), via Pillow or ImageMagick; None when neither is available."""
+    try:
+        from PIL import Image
+        im = Image.open(path).convert("RGBA"); out = []
+        for r in range(rows):
+            for c in range(COLS):
+                cell = im.crop((c * FRAME_W, r * FRAME_H, (c + 1) * FRAME_W, (r + 1) * FRAME_H))
+                out.append(cell.getchannel("A").getextrema()[1])
+        return out
+    except ImportError: pass
+    except Exception: return None
+    if shutil.which("magick"):
+        try:
+            r = subprocess.run(["magick", path, "-crop", f"{FRAME_W}x{FRAME_H}", "+repage", "-format", "%[fx:maxima.a]\n", "info:"], capture_output=True, text=True, timeout=20)
+            vals = [float(x) for x in r.stdout.split()]
+            if r.returncode == 0 and len(vals) >= rows * COLS: return [round(v * 255) for v in vals[:rows * COLS]]
+        except Exception: return None
+    return None
+
+
+def sheet_looks(path):
+    """Rows and user-facing looks of a sheet; measured=False means presence/frames are assumed (no pixel tool)."""
+    try:
+        with open(path, "rb") as fh: head = fh.read(64)
+    except OSError: return None
+    g = image_geometry(head)
+    if not g or g[1] != FRAME_W * COLS or g[2] % FRAME_H or not 8 <= g[2] // FRAME_H <= 11: return None
+    rows = g[2] // FRAME_H; names = row_names(rows)
+    alpha = _cell_alpha(path, rows)
+    counts, present = [], []
+    for r in range(rows):
+        n = 0
+        if alpha:
+            for c in range(min(COLS, 8)):
+                if alpha[r * COLS + c] > 8: n = c + 1
+        counts.append(max(1, n) if alpha else 6); present.append(n > 0 if alpha else True)
+    looks = []
+    if rows == 8:
+        looks = [{"name": names[r], "row": r, "frames": counts[r], "present": present[r]} for r in range(rows)]
+    else:
+        run = next((r for r in (7, 1, 2) if present[r]), None)
+        for r, name in enumerate(names):
+            if name in ("running", "running-right", "running-left"): continue
+            looks.append({"name": name, "row": r, "frames": counts[r], "present": present[r]})
+        looks.insert(1, {"name": "running", "row": run if run is not None else 7, "frames": counts[run] if run is not None else 6, "present": run is not None})
+    return {"rows": rows, "looks": looks, "measured": bool(alpha)}
+
+
 def pet_dirs():
     home = os.path.expanduser("~")
     hermes = os.environ.get("HERMES_HOME") or os.path.join(home, ".hermes")
@@ -671,7 +1048,8 @@ def list_pets():
             try:
                 with open(os.path.join(pd, "pet.json")) as fh: meta = json.load(fh)
             except (OSError, json.JSONDecodeError): pass
-            out.append({"slug": name, "name": meta.get("displayName") or name, "origin": origin, "sheet": sheet, "description": meta.get("description", "")})
+            out.append({"slug": name, "name": meta.get("displayName") or name, "origin": origin, "sheet": sheet, "description": meta.get("description", ""),
+                        "license": (meta.get("source") or {}).get("license", ""), "source": (meta.get("source") or {}).get("site", "")})
     return out
 
 
@@ -686,11 +1064,154 @@ def list_props():
 
 def cmd_pets(args, ctx):
     pets = list_pets() + list_props()
+    if args.looks is not None:
+        want = [p for p in pets if not p.get("prop") and (args.looks == "" or p["slug"] == args.looks)]
+        if not want: print(f"no pet '{args.looks}'", file=sys.stderr); return 2
+        for p in want:
+            info = sheet_looks(p["sheet"])
+            if not info: print(f"{p['slug']:<20} not a {FRAME_W * COLS}×k·{FRAME_H} sheet"); continue
+            have = [l for l in info["looks"] if l["present"]]
+            tail = "" if info["measured"] else "  (geometry only — install Pillow or ImageMagick to measure)"
+            print(f"{p['slug']:<20} looks: " + ", ".join(f"{l['name']} ×{l['frames']}" for l in have) + f" ({len(have)} of {len(info['looks'])}){tail}")
+        return 0
     if args.json: print(json.dumps({"pets": pets})); return 0
     if not pets:
-        print("no sprite sheets found — get one from https://petdex.dev into ~/.config/omarchy/desktop-widgets.pets/<name>/spritesheet.webp, or /hatch one in Hermes"); return 0
-    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {('prop: ' if p.get('prop') else '') + p['name']:<20} {p['sheet']}")
+        print("no sprite sheets found — `desktop-widgets pet fetch <petdex url>` downloads one, or /hatch one in Hermes"); return 0
+    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {('prop: ' if p.get('prop') else '') + p['name']:<20} {p.get('license') or '':<9} {p['sheet']}")
     return 0
+
+
+# ---------------------------------------------------------------- petdex fetcher (parse the installer as a manifest; never run it)
+PETDEX_MAX_BYTES = 25 * 1024 * 1024
+PETDEX_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_CURL_LINE = re.compile(r"""curl\s[^\n]*-o\s+"\$PET_DIR/([A-Za-z0-9_.-]+)"\s+'([^']+)'""")
+
+
+class FetchError(Exception):
+    def __init__(self, code, message): super().__init__(message); self.code = code
+
+
+PETDEX_ASSET_HOSTS = ("petdex.dev", "www.petdex.dev", "assets.petdex.dev")
+
+
+def _http_get(url, headers=None, limit=PETDEX_MAX_BYTES):
+    import urllib.request, urllib.error
+    from urllib.parse import urlparse
+    req = urllib.request.Request(url, headers={"User-Agent": "desktop-widgets/petdex-fetch", "Referer": "https://petdex.dev/", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            host = urlparse(r.geturl()).netloc
+            if host not in PETDEX_ASSET_HOSTS: raise FetchError(4, f"redirected off petdex: {host}")
+            data = r.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        raise FetchError(3 if e.code == 404 else 4, f"{'not on petdex' if e.code == 404 else 'network'}: HTTP {e.code} for {url}")
+    except FetchError:
+        raise
+    except Exception as e:
+        raise FetchError(4, f"network: {e}")
+    return data
+
+
+HTTP_GET = _http_get
+
+
+def _check_size(data):
+    if len(data) > PETDEX_MAX_BYTES: raise FetchError(5, f"file larger than {PETDEX_MAX_BYTES // (1024 * 1024)} MB")
+    return data
+
+
+def petdex_slug(text):
+    t = str(text or "").strip()
+    if not t: raise ValueError("no petdex URL or slug given")
+    if "://" in t or t.startswith(("petdex.dev/", "www.petdex.dev/")):
+        from urllib.parse import urlparse
+        u = urlparse(t if "://" in t else "https://" + t)
+        if u.scheme != "https" or u.netloc not in ("petdex.dev", "www.petdex.dev"): raise ValueError("not a petdex.dev https URL")
+        m = re.match(r"^/(?:[a-z]{2}/)?(?:pets|install)/([^/]+)/?$", u.path)
+        if not m: raise ValueError("not a petdex pet page (expected petdex.dev/pets/<slug>)")
+        t = m.group(1)
+    if not PETDEX_SLUG.match(t): raise ValueError(f"'{t}' is not a petdex slug (lowercase letters, digits, dashes)")
+    return t
+
+
+def parse_install_script(text):
+    files = {name: url for name, url in _CURL_LINE.findall(text)}
+    m = re.search(r"^DISPLAY_NAME='([^']*)'", text, re.M)
+    if "pet.json" not in files or "spritesheet.webp" not in files: raise ValueError("installer is missing the pet.json or spritesheet line")
+    for url in files.values():
+        if not url.startswith("https://assets.petdex.dev/"): raise ValueError(f"refusing asset host in {url}")
+    return {"petjson": files["pet.json"], "sheet": files["spritesheet.webp"], "displayName": m.group(1) if m else ""}
+
+
+_LDJSON_SCRIPT = re.compile(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
+_LICENSE_URL_MAP = (
+    ("creativecommons.org/publicdomain/zero", "CC0"),
+    ("/licenses/by-nc-sa/", "CC-BY-NC-SA"),
+    ("/licenses/by-nc/", "CC-BY-NC"),
+    ("/licenses/by-sa/", "CC-BY-SA"),
+    ("/licenses/by/", "CC-BY"),
+)
+_LICENSE_LABELS = {"CC0", "CC-BY", "CC-BY-SA", "CC-BY-NC", "CC-BY-NC-SA"}
+
+
+def _normalise_license(value):
+    if not isinstance(value, str) or not value.strip(): return None
+    low = value.strip().lower()
+    for needle, label in _LICENSE_URL_MAP:
+        if needle in low: return label
+    lab = re.sub(r"\s+", "-", value.strip().upper())
+    return lab if lab in _LICENSE_LABELS else None
+
+
+def petdex_license(html):
+    """Read a pet page's licence ONLY from its JSON-LD CreativeWork block(s) —
+    the free HTML text carries no per-pet licence, only the site's own
+    licence-picker copy (which regexing the raw text used to false-positive on)."""
+    for block in _LDJSON_SCRIPT.findall(str(html or "")):
+        try: data = json.loads(block)
+        except (ValueError, TypeError): continue
+        for item in (data if isinstance(data, list) else [data]):
+            if not isinstance(item, dict) or item.get("@type") != "CreativeWork": continue
+            lab = _normalise_license(item.get("license"))
+            if lab: return lab
+    return "unknown"
+
+
+def fetch_pet(target, dest_root, http=None, replace=False):
+    http = http or HTTP_GET
+    try: slug = petdex_slug(target)
+    except ValueError as e: raise FetchError(2, str(e))
+    dest = os.path.join(dest_root, slug)
+    if os.path.exists(dest) and not replace: raise FetchError(6, f"{dest} exists (use --replace to replace it)")
+    page_url = f"https://petdex.dev/pets/{slug}"
+    script = http(f"https://petdex.dev/install/{slug}").decode("utf-8", "replace")
+    if "exit 1" in script and "curl" not in script: raise FetchError(3, f"'{slug}' is not on petdex")
+    try: manifest = parse_install_script(script)
+    except ValueError as e: raise FetchError(5, str(e))
+    meta_raw = _check_size(http(manifest["petjson"])); sheet_raw = _check_size(http(manifest["sheet"]))
+    try: meta = json.loads(meta_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError): raise FetchError(5, "pet.json is not JSON")
+    if not isinstance(meta, dict) or not meta.get("id"): raise FetchError(5, "pet.json has no id")
+    g = image_geometry(sheet_raw[:64])
+    if not g: raise FetchError(5, "sheet is not a PNG or WebP")
+    if g[1] != FRAME_W * COLS or g[2] % FRAME_H or not 8 <= g[2] // FRAME_H <= 11: raise FetchError(5, f"sheet is {g[1]}×{g[2]}, expected {FRAME_W * COLS}×(8..11×{FRAME_H})")
+    license_ = "unknown"
+    try: license_ = petdex_license(http(page_url, limit=2 * 1024 * 1024).decode("utf-8", "replace"))
+    except Exception: pass
+    os.makedirs(dest_root, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix=".fetch-", dir=dest_root)
+    try:
+        meta["displayName"] = meta.get("displayName") or manifest["displayName"] or slug
+        meta["spritesheetPath"] = "spritesheet.webp"
+        meta["source"] = {"site": "petdex", "url": page_url, "fetchedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), "license": license_}
+        with open(os.path.join(tmp, "pet.json"), "w") as fh: json.dump(meta, fh, indent=2); fh.write("\n")
+        with open(os.path.join(tmp, "spritesheet.webp"), "wb") as fh: fh.write(sheet_raw)
+        if os.path.exists(dest): shutil.rmtree(dest)
+        os.replace(tmp, dest)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True); raise
+    info = sheet_looks(os.path.join(dest, "spritesheet.webp")) or {"rows": g[2] // FRAME_H, "looks": []}
+    return {"slug": slug, "name": meta["displayName"], "path": dest, "sheet": os.path.join(dest, "spritesheet.webp"), "rows": info["rows"], "looks": info["looks"], "license": license_, "url": page_url}
 
 
 # ---------------------------------------------------------------- grid
@@ -971,7 +1492,14 @@ def build_parser():
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
     ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
-    pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true"); pt.set_defaults(fn=cmd_pets)
+    pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true")
+    pt.add_argument("--looks", nargs="?", const="", metavar="SLUG", help="rows and frames per look (all pets, or one slug)"); pt.set_defaults(fn=cmd_pets)
+    pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable rows) | check [index] (validate rules) | fetch <petdex url or slug> [--add | --widget N] [--replace]")
+    pe.add_argument("op", choices=["expand", "check", "fetch"]); pe.add_argument("target", nargs="?", help="widget index, or for fetch a petdex.dev URL / slug")
+    pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true", help="write even if the config has comments (used with --add/--widget)")
+    pe.add_argument("--replace", action="store_true", help="fetch: replace an existing ~/.config/omarchy/desktop-widgets.pets/<slug>/")
+    pe.add_argument("--add", action="store_true", help="fetch: append a pet widget using it"); pe.add_argument("--widget", type=int, metavar="N", help="fetch: point pet widget N at it")
+    pe.set_defaults(fn=cmd_pet)
     gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
     pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")

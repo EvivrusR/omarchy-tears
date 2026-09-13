@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const P = require("../widgets/Pet.js");
 const sig = { claude: { session: 66, weekly: 46, resetInMin: 118 }, battery: { pct: 15, status: "Discharging", charging: false, discharging: true, full: false }, agents: { active: 2 }, cpu: 12.5, mem: 70, gpu: null, hour: 9 };
 
@@ -67,4 +69,84 @@ test("bounds grows to the union of body and layers and reports the offset", () =
   assert.ok(b.x < 0 && b.y === 0); assert.ok(b.w > 118 && b.h > 128);
   assert.deepEqual(P.bounds([], 118, 128, 1, {}), { x: 0, y: 0, w: 118, h: 128 });
   assert.deepEqual(P.bounds(layers.slice(2), 118, 128, 1, {}), { x: 0, y: 0, w: 118, h: 128 });   // a sheet layer adds nothing
+});
+
+test("trimInfo reports frames and presence per row; looks collapses running rows and keeps extras", () => {
+  // 9-row codex sheet: row 4 (jumping) fully blank, row 2 (running-left) blank, row 7 (running) has 6 frames
+  const alpha = []; for (let r = 0; r < 9; r++) for (let c = 0; c < 8; c++) alpha.push((r === 4 || r === 2) ? 0 : (c < 6 ? 255 : 0));
+  const info = P.trimInfo(alpha, 9);
+  assert.deepEqual(info.counts, P.trimCounts(alpha, 9));
+  assert.equal(info.present[4], false); assert.equal(info.present[0], true); assert.equal(info.present[2], false);
+  const L = P.looks(1872, info);
+  assert.deepEqual(L.map((l) => l.name), ["idle", "running", "waving", "jumping", "failed", "waiting", "review"]);
+  const byName = Object.fromEntries(L.map((l) => [l.name, l]));
+  assert.equal(byName.jumping.present, false); assert.equal(byName.running.present, true); assert.equal(byName.running.frames, 6); assert.equal(byName.running.row, 7);
+  assert.equal(L.filter((l) => l.present).length, 6);
+  // legacy 8-row sheet keeps extra1/extra2
+  const a8 = []; for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) a8.push(c < 4 ? 255 : 0);
+  assert.deepEqual(P.looks(1664, P.trimInfo(a8, 8)).map((l) => l.name), ["idle", "waving", "running", "failed", "review", "jumping", "extra1", "extra2"]);
+  // 11-row ChatGPT export: rows past 9 are extras
+  const a11 = []; for (let r = 0; r < 11; r++) for (let c = 0; c < 8; c++) a11.push(255);
+  assert.deepEqual(P.looks(2288, P.trimInfo(a11, 11)).map((l) => l.name).slice(7), ["extra10", "extra11"]);
+});
+
+test("rowFor falls back along the chain when a look is missing, and resolveLook names what is shown", () => {
+  const present = [true, true, false, true, false, true, false, true, true];   // jumping (4) and waiting (6) absent
+  assert.equal(P.rowFor("jumping", 1872, false, present), 3);                  // → waving
+  assert.equal(P.rowFor("waiting", 1872, false, present), 8);                  // → review
+  assert.equal(P.rowFor("failed", 1872, false, present), 5);                   // present, unchanged
+  assert.equal(P.rowFor("jumping", 1872), 4);                                  // no presence info: old behaviour
+  const noWave = present.slice(); noWave[3] = false;
+  assert.equal(P.rowFor("jumping", 1872, false, noWave), 0);                   // waving gone too → idle
+  assert.equal(P.rowFor("running", 1872, true, [true, false, false, true, true, true, true, true, true]), 7); // running-left absent → row 7 (flip handles direction)
+  assert.equal(P.resolveLook("jumping", ["idle", "waving"]), "waving");
+  assert.equal(P.resolveLook("failed", ["idle"]), "idle");
+  assert.equal(P.resolveLook("waving", ["idle", "waving"]), "waving");
+});
+
+test("uniqueNames gives later pets on the same sheet a numbered name", () => {
+  const cfgs = [{ type: "pet", sheet: "/p/teto/spritesheet.webp" }, { type: "clock" }, { type: "pet", sheet: "/q/teto/spritesheet.webp" }, { type: "pet", name: "teto" }, { type: "pet", name: "Jill" }];
+  assert.deepEqual(P.uniqueNames(cfgs), ["teto", null, "teto_2", "teto_3", "jill"]);
+  assert.deepEqual(P.uniqueNames([]), []);
+  assert.deepEqual(P.uniqueNames([{ type: "pet", name: "teto", enabled: false }, { type: "pet", name: "teto" }]), [null, "teto"]);
+});
+
+const RULES_DIR = path.join(__dirname, "fixtures/rules");
+const readFx = (n) => JSON.parse(fs.readFileSync(path.join(RULES_DIR, n), "utf8"));
+
+test("~ is a case-insensitive substring test; null never matches", () => {
+  const s = { claude: { label: "Session (5-hour)" }, custom: { window: "YouTube — Firefox" }, gpu: null };
+  assert.equal(P.evalExpr("claude.label ~ 'session'", s), true);
+  assert.equal(P.evalExpr("custom.window ~ 'youtube' || custom.window ~ 'netflix'", s), true);
+  assert.equal(P.evalExpr("!(custom.window ~ 'netflix')", s), true);
+  assert.equal(P.evalExpr("gpu ~ 'x'", s), false); assert.equal(P.evalExpr("nope ~ 'x'", s), false);
+  assert.equal(P.evalExpr("cpu ~ '1'", { cpu: 12 }), true);
+});
+
+test("compileRule matches the shared fixture, and presets equal the shared presets fixture", () => {
+  const fx = readFx("compile-basic.json");
+  const got = JSON.parse(JSON.stringify(P.compileRules(fx.rows)));
+  assert.deepEqual(got, fx.expect);
+  assert.deepEqual(JSON.parse(JSON.stringify(P.WATCH)), readFx("presets.json"));
+  assert.deepEqual(P.presetRows("cpu"), P.WATCH.cpu); assert.notEqual(P.presetRows("cpu"), P.WATCH.cpu); assert.deepEqual(P.presetRows("nope"), []);
+  assert.equal(P.rulesFor("battery")[0].if, "battery.full == true");
+});
+
+test("validateRules matches the shared fixture and skips dimensions that are null", () => {
+  const fx = readFx("validate-basic.json");
+  assert.deepEqual(P.validateRules(fx.rows, fx.ctx), fx.expect);
+  assert.deepEqual(P.validateRules(fx.rows.slice(0, 2), { looks: null, signals: null, pets: null }), []);
+  assert.deepEqual(P.validateRules("nope", fx.ctx), []);
+});
+
+test("step: an edge that rises during another beat is held, not lost", () => {
+  const rules = [
+    { kind: "on", if: "a", state: "waving", beat: 1 },
+    { kind: "on", if: "b", state: "jumping", beat: 1, say: "b!" },
+  ];
+  let s = P.step(rules, { a: false, b: false }, null, 0);
+  s = P.step(rules, { a: true, b: false }, s, 100);  assert.equal(s.state, "waving");
+  s = P.step(rules, { a: true, b: true }, s, 200);   assert.equal(s.state, "waving");   // b rose while a beats
+  s = P.step(rules, { a: true, b: true }, s, 1200);  assert.equal(s.state, "jumping"); assert.equal(s.say, "b!");  // held edge fires once a's beat ends
+  s = P.step(rules, { a: true, b: true }, s, 2300);  assert.equal(s.state, "idle");     // no re-fire without a new edge
 });

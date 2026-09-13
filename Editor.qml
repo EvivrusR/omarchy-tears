@@ -6,6 +6,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "widgets/EditorModel.js" as Model
+import "widgets/Pet.js" as Pet
 import "editor"
 
 // Editor panel for desktop-widgets. Summoned by the shell
@@ -37,6 +38,24 @@ Item {
   property bool saving: false
   readonly property bool dirty: Model.dirty(doc, saved)
   readonly property var selectedEntry: selected >= 0 && selected < doc.length ? doc[selected] : null
+  // Published pet names, computed like the service does: an entry with an
+  // active validation error is treated as disabled (Pet.js stays pure — this
+  // mirrors Service.qml excluding both disabled AND errored widgets from `widgets`).
+  readonly property var publishedNames: Pet.uniqueNames(doc.map(function(e, i) { if (!e || Model.firstError(root.messages, i) === "") return e; var c = {}; for (var k in e) c[k] = e[k]; c.enabled = false; return c }))
+  readonly property var petRowContext: {
+    var e = selectedEntry
+    if (!e || String(e.type) !== "pet") return { looks: [], signals: [], pets: [] }
+    var me = root.publishedNames[root.selected], states = service ? service.petStates : {}
+    var pets = [], sigs = Pet.SIGNAL_KEYS.slice()
+    for (var i = 0; i < root.publishedNames.length; i++) { var n = root.publishedNames[i]; if (n && n !== me) { pets.push(n); sigs.push("pets." + n + ".state"); sigs.push("pets." + n + ".say") } }
+    for (var k in states) if (k !== me && pets.indexOf(k) === -1) { pets.push(k); sigs.push("pets." + k + ".state"); sigs.push("pets." + k + ".say") }
+    var rows = e.signals && typeof e.signals.length === "number" ? e.signals : []
+    for (var j = 0; j < rows.length; j++) if (rows[j] && rows[j].key) sigs.push("custom." + rows[j].key)
+    var lk = states[me] && states[me].looks ? states[me].looks.filter(function(l) { return l.present }).map(function(l) { return l.name }) : Pet.LOOKS.slice()
+    return { looks: lk, signals: sigs, pets: pets }
+  }
+  readonly property var petRuleWarnings: selectedEntry && String(selectedEntry.type) === "pet" && String(Model.valueOf(selectedEntry, "watch", registry)) === "custom"
+    ? Pet.validateRules(Array.prototype.slice.call(selectedEntry.rules || []), petRowContext) : []
 
   function loadFromService() {
     var raw = service && service.rawWidgets ? service.rawWidgets : []
@@ -346,6 +365,10 @@ Item {
                 visible: root.doc.length > 0
                 entry: root.selectedEntry
                 registry: root.registry
+                looks: root.selectedEntry && String(root.selectedEntry.type) === "pet" && root.service && root.selected >= 0 && root.service.petStates[root.publishedNames[root.selected]] ? (root.service.petStates[root.publishedNames[root.selected]].looks || null) : null
+                publishedName: root.selected >= 0 ? (root.publishedNames[root.selected] || "") : ""
+                rowContext: root.petRowContext
+                ruleWarnings: root.petRuleWarnings
                 onEdited: function(key, value) { root.setField(key, value) }
               }
               ColumnLayout {

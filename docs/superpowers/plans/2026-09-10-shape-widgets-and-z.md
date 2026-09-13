@@ -35,7 +35,7 @@
 - [x] `widgets/WidgetCard.qml`: `pad` becomes a plain property.
 - [x] `widgets/ShapeWidget.qml`.
 - [x] `Service.qml`: `placements` ordered by `stackOrder`; Loader case `shape`.
-- [x] Live: add a panel behind the stats/agents column on envi-laptop with `z: -1`, restart shell, `hyprctl layers` shows it first; screenshot.
+- [x] Live: add a panel behind the stats/agents column on the dev laptop with `z: -1`, restart shell, `hyprctl layers` shows it first; screenshot.
 
 ### Task 3: Editor, CLI, docs
 - [x] `Editor.qml` list row: `z ±n` chip when z ≠ 0.

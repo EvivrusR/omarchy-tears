@@ -93,7 +93,7 @@ good layout, log the parse error. Unknown `type` → skipped with a log line.
 
 - `omarchy plugin validate <repo>` passes.
 - `node --test tests/` passes for `Stats.js` parsing.
-- Live on envi-laptop: enable, see widgets; `omarchy theme set` recolours;
+- Live on the dev laptop: enable, see widgets; `omarchy theme set` recolours;
   `omarchy plugin disable` removes them; `enable` restores; `hyprctl reload`
   leaves them in place; journal shows no `service plugin load failed`.
 - Malformed config edit keeps the last layout and logs.

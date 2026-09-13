@@ -458,7 +458,7 @@ Add `import "editor"` to `Editor.qml`.
 
 - [ ] Ctrl+S saves; Esc with dirty + apply-on-change off → ConfirmDialog "Discard changes?" (use `Ui/ConfirmDialog`: `opened`, `message`, `confirmed()`, `canceled()`, `handleKey(event)`); `j`/`k` move selection when no text field has focus.
 - [ ] `service === null` → card shows "plugin service not running" and a Button running `omarchy plugin enable homelab.desktop-widgets` via `Quickshell.execDetached`.
-- [ ] Household menu: `"household.widgets.editor": {"icon":"","label":"Editor","action":"omarchy-shell shell toggle homelab.desktop-widgets '{}'"}` as the first row; keybind suggestion in README: `o.bind("SUPER + SHIFT + W", "Desktop widgets editor", "omarchy-shell shell toggle homelab.desktop-widgets '{}'")` in `~/.config/hypr/bindings.lua` (add on envi-laptop; check `hyprctl binds` for a clash first).
+- [ ] Household menu: `"household.widgets.editor": {"icon":"","label":"Editor","action":"omarchy-shell shell toggle homelab.desktop-widgets '{}'"}` as the first row; keybind suggestion in README: `o.bind("SUPER + SHIFT + W", "Desktop widgets editor", "omarchy-shell shell toggle homelab.desktop-widgets '{}'")` in `~/.config/hypr/bindings.lua` (add on the dev laptop; check `hyprctl binds` for a clash first).
 - [ ] README "Editor" section with a screenshot `docs/editor.png`; vault guide section; memory; board; plan status all done.
 - [ ] Commit `"Editor panel: keyboard, disabled state, menu row, keybind, docs — Phase 2 complete"`; push.
 

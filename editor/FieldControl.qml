@@ -15,6 +15,7 @@ RowLayout {
   signal edited(string key, var value)
   spacing: Style.spacing.md
   readonly property string kind: String(field.type || "string")
+  readonly property string cliPath: String(Qt.resolvedUrl("../bin/desktop-widgets")).replace(/^file:\/\//, "")
 
   ColumnLayout {
     Layout.preferredWidth: Style.space(190)
@@ -28,7 +29,7 @@ RowLayout {
 
   Loader {
     id: control
-    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps" || root.kind === "text"
+    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps" || root.kind === "text" || root.kind === "petdex"
     Layout.fillWidth: wide
     Layout.alignment: Qt.AlignVCenter
     sourceComponent: {
@@ -41,6 +42,7 @@ RowLayout {
         case "apps": return appsComp
         case "text": return multilineComp
         case "rows": return rowsComp
+        case "petdex": return petdexComp
         default: return textComp
       }
     }
@@ -101,6 +103,47 @@ RowLayout {
     }
   }
 
+  // petdex: paste a petdex.dev URL, Download runs the CLI fetch (the shell does
+  // no networking itself); an Installed… picker lists sheets already on disk.
+  Component {
+    id: petdexComp
+    ColumnLayout {
+      spacing: Style.spacing.xs
+      property string status: ""
+      property var installed: []
+      RowLayout {
+        spacing: Style.spacing.sm
+        TextField { id: urlField; Layout.fillWidth: true; placeholderText: "https://petdex.dev/pets/<slug>"; enabled: !fetcher.running
+          onAccepted: if (text.trim() !== "") fetcher.start(text.trim()) }
+        Button { text: fetcher.running ? "Downloading…" : "Download"; bordered: true; enabled: !fetcher.running && urlField.text.trim() !== ""; onClicked: fetcher.start(urlField.text.trim()) }
+        Dropdown { showLabel: false; implicitWidth: Style.space(150); value: ""
+          options: [{ value: "", label: "Installed…" }].concat(installed.map(function(p) { return { value: p.sheet + "|" + p.slug, label: p.name + (p.license ? " · " + p.license : "") } }))
+          onChanged: function(v) { if (!v) return; var parts = v.split("|"); root.edited("sheet", parts[0]); root.edited("name", parts[1]); status = "using " + parts[1] }
+          Component.onCompleted: lister.running = true }
+      }
+      Text { visible: status !== ""; text: status; color: status.indexOf("ERROR") === 0 ? Color.urgent : Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+      Process {
+        id: fetcher
+        property string url: ""
+        function start(u) { url = u; status = "downloading " + u + "…"; running = true }
+        command: [root.cliPath, "pet", "fetch", url, "--json"]
+        stdout: StdioCollector { id: fetchOut }
+        stderr: StdioCollector { id: fetchErr }
+        onExited: function(code) {
+          if (code === 6) { status = "already installed — pick it from Installed…"; lister.running = true; return }
+          if (code !== 0) { status = "ERROR " + String(fetchErr.text || "").trim().split("\n")[0]; return }
+          var r; try { r = JSON.parse(String(fetchOut.text || "")) } catch (e) { status = "ERROR bad reply from the CLI"; return }
+          root.edited("sheet", r.sheet); root.edited("name", r.slug)
+          var have = (r.looks || []).filter(function(l) { return l.present }).length
+          status = r.name + " · " + have + " looks · " + r.license
+          lister.running = true
+        }
+      }
+      Process { id: lister; command: [root.cliPath, "pets", "--json"]; stdout: StdioCollector { id: listOut }
+        onExited: { var l = []; try { l = (JSON.parse(String(listOut.text || "{}")).pets || []).filter(function(p) { return !p.prop }) } catch (e) {} installed = l } }
+    }
+  }
+
   // text: a multi-line, monospace box (ASCII art); commits when focus leaves.
   Component {
     id: multilineComp
@@ -156,7 +199,38 @@ RowLayout {
   }
 
   // rows: a small editor for template rows — kind dropdown + that kind's keys.
-  readonly property var rowKeys: ({ heading: ["text"], text: ["text"], kv: ["label", "value"], bar: ["label", "value", "text", "max", "warnAt"], spacer: ["height"], when: ["if", "state", "say"], on: ["if", "state", "beat", "say"], image: ["image", "z", "x", "y", "scale"], sheet: ["sheet", "z", "x", "y", "scale", "follow"] })
+  readonly property var rowKeys: ({ heading: ["text"], text: ["text"], kv: ["label", "value"], bar: ["label", "value", "text", "max", "warnAt"], spacer: ["height"],
+    when: ["if", "state", "say"], on: ["if", "state", "beat", "say"],
+    range: ["signal", "min", "max", "look", "beat", "say", "and"], flag: ["signal", "is", "look", "beat", "say", "and"], keyword: ["signal", "words", "match", "look", "beat", "say", "and"], pet: ["pet", "look", "then", "beat", "say"],
+    image: ["image", "z", "x", "y", "scale"], sheet: ["sheet", "z", "x", "y", "scale", "follow"], command: ["key", "command"] })
+  readonly property var numericKeys: ({ warnAt: true, height: true, min: true, max: true, beat: true })
+  property var rowContext: ({ looks: [], signals: [], pets: [] })
+  property var warnings: []
+  function hint(k) { var rf = root.field.rowFields || {}; return rf[k] || null }
+  function enumFor(k, current) {
+    var h = hint(k), list = []
+    if (!h) return null
+    if (h.options) list = h.options.slice()
+    else if (h.enum === "looks") list = (root.rowContext.looks || []).slice()
+    else if (h.enum === "signals") list = (root.rowContext.signals || []).slice()
+    else if (h.enum === "pets") list = (root.rowContext.pets || []).slice()
+    if (!list.length && !h.options) return null                       // nothing known yet: fall back to a text box
+    if (current !== "" && list.indexOf(current) === -1) list.unshift(current)
+    return list.map(function(o) { return { value: o, label: o } })
+  }
+  function newRow(kind) {
+    switch (kind) {
+      case "range": return { kind: "range", signal: "cpu", min: 60, look: "running" }
+      case "flag": return { kind: "flag", signal: "battery.charging", is: true, look: "running" }
+      case "keyword": return { kind: "keyword", signal: "claude.label", words: "", match: "any", look: "review" }
+      case "pet": return { kind: "pet", pet: (root.rowContext.pets || [])[0] || "", look: "failed", then: "waving", beat: 2 }
+      case "when": return { kind: "when", if: "", state: "idle" }
+      case "command": return { kind: "command", key: "", command: "" }
+      case "image": return { kind: "image", image: "" }
+      case "sheet": return { kind: "sheet", sheet: "" }
+      default: return { kind: kind, text: "" }
+    }
+  }
   function rowsArray() {
     var v = root.value
     var a = []
@@ -184,22 +258,31 @@ RowLayout {
           }
           Repeater {
             model: root.rowKeys[String(modelData.kind || "text")] || ["text"]
-            delegate: TextField {
+            delegate: Loader {
               required property var modelData
               readonly property string k: String(modelData)
               readonly property var rowRef: parent.modelData
-              Layout.fillWidth: k === "text" || k === "value" || k === "label"
-              Layout.preferredWidth: Layout.fillWidth ? -1 : Style.space(64)
-              placeholderText: k
-              text: rowRef[k] === undefined ? "" : String(rowRef[k])
-              onEditingFinished: {
-                var a = root.rowsArray(); var row = a[parent.index]
-                if (text === "") delete row[k]
-                else if (k === "warnAt" || k === "height") { var n = parseFloat(text); if (!isNaN(n)) row[k] = n }
-                else row[k] = text
-                if (JSON.stringify(a[parent.index]) !== JSON.stringify(root.rowsArray()[parent.index])) root.emitRows(a)
+              readonly property int rowIndex: parent.index
+              readonly property string current: rowRef[k] === undefined ? "" : String(rowRef[k])
+              readonly property var opts: root.enumFor(k, current)
+              readonly property bool isBool: (root.hint(k) || {}).type === "boolean"
+              Layout.fillWidth: !opts && !isBool && (k === "text" || k === "value" || k === "label" || k === "if" || k === "words" || k === "and" || k === "command")
+              Layout.preferredWidth: Layout.fillWidth ? -1 : (opts ? Style.space(120) : Style.space(64))
+              function commit(v) {
+                var a = root.rowsArray(); var row = a[rowIndex]
+                if (v === "" || v === undefined) delete row[k]
+                else if (root.numericKeys[k]) { var n = parseFloat(v); if (!isNaN(n)) row[k] = n }
+                else row[k] = v
+                if (JSON.stringify(a[rowIndex]) !== JSON.stringify(root.rowsArray()[rowIndex])) root.emitRows(a)
               }
-              Keys.onEscapePressed: function(e) { focus = false; e.accepted = true }
+              sourceComponent: isBool ? rowBool : (opts ? rowEnum : rowText)
+              Component { id: rowBool; Item { implicitWidth: sw.implicitWidth + hintText.implicitWidth + Style.spacing.xs; implicitHeight: sw.implicitHeight
+                RowLayout { spacing: Style.spacing.xs; Text { id: hintText; text: k; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+                  ToggleSwitch { id: sw; checked: rowRef[k] !== false && rowRef[k] !== "false"; onToggled: commit(!(rowRef[k] !== false && rowRef[k] !== "false")) } } } }
+              Component { id: rowEnum; Dropdown { showLabel: false; value: current; options: opts; onChanged: function(v) { commit(v) } } }
+              Component { id: rowText; TextField { placeholderText: k; text: current
+                onEditingFinished: commit(text)
+                Keys.onEscapePressed: function(e) { focus = false; e.accepted = true } } }
             }
           }
           Button { text: "↑"; bordered: true; enabled: index > 0; onClicked: { var a = root.rowsArray(); var t = a[index - 1]; a[index - 1] = a[index]; a[index] = t; root.emitRows(a) } }
@@ -207,7 +290,21 @@ RowLayout {
           Button { text: "✕"; bordered: true; onClicked: { var a = root.rowsArray(); a.splice(index, 1); root.emitRows(a) } }
         }
       }
-      Button { text: "+ row"; bordered: true; onClicked: { var a = root.rowsArray(); a.push({ kind: "text", text: "" }); root.emitRows(a) } }
+      Repeater {
+        model: root.warnings
+        delegate: Text { required property var modelData; text: "row " + modelData.row + ": " + modelData.message; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+      }
+      RowLayout {
+        spacing: Style.spacing.xs
+        Repeater {
+          model: (root.field.options || []).indexOf("range") !== -1 ? ["range", "flag", "keyword", "pet", "when"] : [String((root.field.options || [])[0] || "text")]
+          delegate: Button {
+            required property var modelData
+            text: "+ " + modelData; bordered: true
+            onClicked: { var a = root.rowsArray(); a.push(root.newRow(String(modelData))); root.emitRows(a) }
+          }
+        }
+      }
     }
   }
   Component {

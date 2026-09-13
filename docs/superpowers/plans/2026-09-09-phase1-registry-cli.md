@@ -31,7 +31,7 @@
 - No dependencies beyond Node (tests only) and Python 3 stdlib. Omarchy does not guarantee Node, so nothing at runtime may need it.
 - Nothing under `/usr/share/omarchy` is ever written.
 - Config path stays `~/.config/omarchy/desktop-widgets.json` (honour `$XDG_CONFIG_HOME` if set).
-- A valid existing config must render identically before and after this phase (the four live widgets on envi-laptop are the regression check).
+- A valid existing config must render identically before and after this phase (the four live widgets on the dev laptop are the regression check).
 - Every write to the config keeps the previous version at `desktop-widgets.json.bak` and is atomic (temp file + rename).
 - Commit after every task with the session attribution trailer; push to Forge `origin master`.
 - Plugin id `homelab.desktop-widgets`; CLI name `desktop-widgets`; exit code 0 success, 1 validation errors, 2 usage/IO errors.
@@ -608,7 +608,7 @@ Replace the `align` line with:
   }
 ```
 
-- [ ] **Step 3: Live check on envi-laptop**
+- [ ] **Step 3: Live check on the dev laptop**
 
 ```bash
 omarchy plugin validate . && omarchy restart shell; sleep 7
@@ -1415,7 +1415,7 @@ Parser additions:
 }
 ```
 
-Install line for README (and run it on envi-laptop):
+Install line for README (and run it on the dev laptop):
 
 ```bash
 mkdir -p ~/.local/bin && ln -sf ~/.config/omarchy/plugins/homelab.desktop-widgets/bin/desktop-widgets ~/.local/bin/desktop-widgets

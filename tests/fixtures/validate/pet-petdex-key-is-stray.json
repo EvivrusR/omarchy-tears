@@ -1,0 +1,19 @@
+{
+  "config": {
+    "widgets": [
+      {
+        "type": "pet",
+        "sheet": "/x/spritesheet.webp",
+        "petdex": "https://petdex.dev/pets/boba"
+      }
+    ]
+  },
+  "expect": {
+    "widgets": 1,
+    "errors": 0,
+    "warnings": 1,
+    "messages": [
+      "widget 0: unknown key 'petdex'"
+    ]
+  }
+}

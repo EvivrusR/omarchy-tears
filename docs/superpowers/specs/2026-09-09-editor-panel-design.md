@@ -135,7 +135,7 @@ list selection when the list has focus. Ctrl+S saves.
   registry)`, `setValue(entry, field, value)` with default-stripping,
   `moveEntry(list, i, dir)`, `entryLabel(entry, registry)`, `firstError(messages, i)`,
   `dirty(doc, saved)`.
-- Live checks on envi-laptop: summon via IPC, add a clock, see it appear
+- Live checks on the dev laptop: summon via IPC, add a clock, see it appear
   (apply-on-change), move it, disable it, Revert, Esc, and confirm the file
   and `.bak` contents; `omarchy plugin disable` while open closes cleanly.
 
