@@ -199,6 +199,7 @@ def validate_config(parsed, registry):
             push("error", f"unknown type '{type_}'", "type"); continue
         known = set()
         for f in fields_for(type_, registry):
+            if f["type"] == "petdex": continue
             known.add(f["key"])
             if f["type"] == "type" or f["key"] not in entry: continue
             _check_field(f, entry[f["key"]], lambda level, message, key=f["key"]: push(level, message, key))
@@ -296,7 +297,8 @@ def cmd_types(args, ctx):
             if "default" in f: extra.append(f"default {json.dumps(f['default'])}")
             if "options" in f: extra.append(("one of " if f["type"] == "enum" else "any of ") + ", ".join(f["options"]))
             if "min" in f or "max" in f: extra.append(f"{_num(f['min']) if 'min' in f else ''}..{_num(f['max']) if 'max' in f else ''}")
-            print(f"  {f['key']:<20} {f['type']:<11} {'; '.join(extra)}" + (f"  — {f['description']}" if f.get("description") else ""))
+            type_disp = f["type"] + " (editor control)" if f["type"] == "petdex" else f["type"]
+            print(f"  {f['key']:<20} {type_disp:<11} {'; '.join(extra)}" + (f"  — {f['description']}" if f.get("description") else ""))
         return 0
     for name, t in reg["types"].items():
         tag = " (drop-in)" if t.get("dropIn") else ""

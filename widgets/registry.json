@@ -925,6 +925,12 @@
           "description": "how other pets refer to this one in rules (pets.<name>.state); default: the sheet's folder name"
         },
         {
+          "key": "petdex",
+          "type": "petdex",
+          "label": "Get a pet",
+          "description": "paste a petdex.dev pet URL and press Download; the sheet lands in ~/.config/omarchy/desktop-widgets.pets/<slug>/ and this pet points at it"
+        },
+        {
           "key": "sheet",
           "type": "path",
           "label": "Sprite sheet",

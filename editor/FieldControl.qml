@@ -15,6 +15,7 @@ RowLayout {
   signal edited(string key, var value)
   spacing: Style.spacing.md
   readonly property string kind: String(field.type || "string")
+  readonly property string cliPath: String(Qt.resolvedUrl("../bin/desktop-widgets")).replace(/^file:\/\//, "")
 
   ColumnLayout {
     Layout.preferredWidth: Style.space(190)
@@ -28,7 +29,7 @@ RowLayout {
 
   Loader {
     id: control
-    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps" || root.kind === "text"
+    readonly property bool wide: root.kind === "string" || root.kind === "path" || root.kind === "command" || root.kind === "color" || root.kind === "multi-enum" || root.kind === "rows" || root.kind === "apps" || root.kind === "text" || root.kind === "petdex"
     Layout.fillWidth: wide
     Layout.alignment: Qt.AlignVCenter
     sourceComponent: {
@@ -41,6 +42,7 @@ RowLayout {
         case "apps": return appsComp
         case "text": return multilineComp
         case "rows": return rowsComp
+        case "petdex": return petdexComp
         default: return textComp
       }
     }
@@ -98,6 +100,46 @@ RowLayout {
       values: Array.isArray(root.value) ? root.value : []
       options: (root.field.options || []).map(function(o) { return { value: o, label: o } })
       onChanged: function(vals) { root.edited(root.field.key, vals) }
+    }
+  }
+
+  // petdex: paste a petdex.dev URL, Download runs the CLI fetch (the shell does
+  // no networking itself); an Installed… picker lists sheets already on disk.
+  Component {
+    id: petdexComp
+    ColumnLayout {
+      spacing: Style.spacing.xs
+      property string status: ""
+      property var installed: []
+      RowLayout {
+        spacing: Style.spacing.sm
+        TextField { id: urlField; Layout.fillWidth: true; placeholderText: "https://petdex.dev/pets/<slug>"; enabled: !fetcher.running
+          onAccepted: if (text.trim() !== "") fetcher.start(text.trim()) }
+        Button { text: fetcher.running ? "Downloading…" : "Download"; bordered: true; enabled: !fetcher.running && urlField.text.trim() !== ""; onClicked: fetcher.start(urlField.text.trim()) }
+        Dropdown { showLabel: false; implicitWidth: Style.space(150); value: ""
+          options: [{ value: "", label: "Installed…" }].concat(installed.map(function(p) { return { value: p.sheet + "|" + p.slug, label: p.name + (p.license ? " · " + p.license : "") } }))
+          onChanged: function(v) { if (!v) return; var parts = v.split("|"); root.edited("sheet", parts[0]); root.edited("name", parts[1]); status = "using " + parts[1] }
+          Component.onCompleted: lister.running = true }
+      }
+      Text { visible: status !== ""; text: status; color: status.indexOf("ERROR") === 0 ? Color.urgent : Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+      Process {
+        id: fetcher
+        property string url: ""
+        function start(u) { url = u; status = "downloading " + u + "…"; running = true }
+        command: [root.cliPath, "pet", "fetch", url, "--json", "--force"]
+        stdout: StdioCollector { id: fetchOut }
+        stderr: StdioCollector { id: fetchErr }
+        onExited: function(code) {
+          if (code !== 0) { status = "ERROR " + String(fetchErr.text || "").trim().split("\n")[0]; return }
+          var r; try { r = JSON.parse(String(fetchOut.text || "")) } catch (e) { status = "ERROR bad reply from the CLI"; return }
+          root.edited("sheet", r.sheet); root.edited("name", r.slug)
+          var have = (r.looks || []).filter(function(l) { return l.present }).length
+          status = r.name + " · " + have + " looks · " + r.license
+          lister.running = true
+        }
+      }
+      Process { id: lister; command: [root.cliPath, "pets", "--json"]; stdout: StdioCollector { id: listOut }
+        onExited: { var l = []; try { l = (JSON.parse(String(listOut.text || "{}")).pets || []).filter(function(p) { return !p.prop }) } catch (e) {} installed = l } }
     }
   }
 
