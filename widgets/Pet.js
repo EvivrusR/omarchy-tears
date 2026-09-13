@@ -94,7 +94,7 @@ var ROW_KINDS = ["range", "flag", "keyword", "pet", "when", "on"]
 
 function q(s) { return "'" + String(s).replace(/'/g, "") + "'" }
 function petKey(name) { return String(name || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_") }
-function hasNum(v) { return v !== undefined && v !== null && v !== "" && !isNaN(Number(v)) }
+function hasNum(v) { return typeof v !== "boolean" && v !== undefined && v !== null && v !== "" && !isNaN(Number(v)) }
 function isSet(v) { return v !== undefined && v !== null && v !== "" }
 
 // A structured row → an engine rule. Raw when/on rows pass through.

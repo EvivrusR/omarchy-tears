@@ -874,7 +874,14 @@ def cmd_pet(args, ctx):
     if args.op == "check":
         try: parsed, _ = read_config(ctx["path"])
         except ValueError as e: print(f"ERROR   {e}", file=sys.stderr); return 1
-        widgets = parsed.get("widgets", []) if isinstance(parsed, dict) else (parsed or [])
+        widgets = parsed.get("widgets") if isinstance(parsed, dict) else parsed
+        if not isinstance(widgets, list):
+            print("ERROR   config must be a list of widgets or an object with a widgets list", file=sys.stderr); return 1
+        if args.index is not None:
+            try: w0 = index_arg(widgets, args.index)
+            except ValueError as e: print(str(e), file=sys.stderr); return 2
+            if not isinstance(w0, dict) or w0.get("type") != "pet":
+                print(f"widget {args.index} is not a pet", file=sys.stderr); return 2
         report = {}
         for i, w in enumerate(widgets):
             if not isinstance(w, dict) or w.get("type") != "pet": continue

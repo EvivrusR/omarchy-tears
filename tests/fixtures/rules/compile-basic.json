@@ -15,6 +15,7 @@
     { "kind": "range", "signal": "mem", "min": 90, "and": "cpu > 50", "look": "failed" },
     { "kind": "when", "if": "cpu >= 95", "state": "failed", "say": "cpu {cpu}%" },
     { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5 },
+    { "kind": "range", "signal": "cpu", "min": true, "look": "idle" },
     { "kind": "bogus" },
     "not a row"
   ],
@@ -33,6 +34,7 @@
     { "kind": "when", "if": "pets.jill.state == 'running'", "state": "running", "say": "" },
     { "kind": "when", "if": "mem >= 90 && (cpu > 50)", "state": "failed", "say": "" },
     { "kind": "when", "if": "cpu >= 95", "state": "failed", "say": "cpu {cpu}%" },
-    { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5, "say": "" }
+    { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5, "say": "" },
+    { "kind": "when", "if": "cpu != null", "state": "idle", "say": "" }
   ]
 }

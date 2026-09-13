@@ -443,6 +443,17 @@ class Cli(unittest.TestCase):
         self.assertEqual(json.loads(out)["widgets"]["1"][0]["row"], 0)
         self.assertEqual(json.loads(out)["widgets"].get("0", []), [])
 
+    def test_pet_check_null_widgets_and_bad_index(self):
+        self.cfg.write_text(json.dumps({"widgets": None}))
+        code, out, err = self.run_cli("pet", "check")
+        self.assertEqual(code, 1)
+        self.assertIn("ERROR   config must be a list of widgets or an object with a widgets list", err)
+        self.cfg.write_text(json.dumps({"widgets": [
+            {"type": "clock", "corner": "top-right"},
+            {"type": "stats", "corner": "bottom-left", "enabled": False}]}))
+        code, out, err = self.run_cli("pet", "check", "9")
+        self.assertEqual(code, 2)
+
 
 class PetRules(unittest.TestCase):
     RULES = ROOT / "tests" / "fixtures" / "rules"
