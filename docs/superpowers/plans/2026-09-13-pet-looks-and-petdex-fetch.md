@@ -1916,13 +1916,13 @@ git push github feat/pet-looks-petdex; git push origin feat/pet-looks-petdex   #
 
 | Task | State | Notes |
 |---|---|---|
-| 1 Looks inventory (Pet.js) | | |
-| 2 Widget publishes looks; editor looks line | | |
-| 3 Compiler, `~`, presets as rows, validator, held edges (JS) | | |
-| 4 Python twin + `pet expand/check` + registry | | |
-| 5 Custom command signals + shared sampler | | |
-| 6 `pets --looks` + sheet probe | | |
-| 7 Editor rule rows | | |
-| 8 `pet fetch` CLI | | |
-| 9 Editor Download | | |
-| 10 Docs + push | | |
+| 1 Looks inventory (Pet.js) | done | looks()/resolveLook rewrite authorized by controller dispatch; review clean |
+| 2 Widget publishes looks; editor looks line | done | fix round 1/5 — Service.widgets omits disabled/erroring entries, fixed by keying names off `__index`; review clean |
+| 3 Compiler, `~`, presets as rows, validator, held edges (JS) | done | review clean |
+| 4 Python twin + `pet expand/check` + registry | done | fix round 1/5 — non-list `widgets` guard + exit codes, `hasNum` boolean parity with Python; review clean |
+| 5 Custom command signals + shared sampler | done | one parked ruling — shared sampler means a pet reads a sibling's state 0–1 tick old, not a fixed "previous tick"; documented in README/CHANGELOG this task |
+| 6 `pets --looks` + sheet probe | done | Pillow/ImageMagick pixel probe, geometry-only fallback; review clean |
+| 7 Editor rule rows | done | review clean |
+| 8 `pet fetch` CLI | done | fix round 1/5 — licence read only from JSON-LD `license` (petdex publishes none today → `unknown`), never regex free text; review clean |
+| 9 Editor Download | done | *Get a pet* paste + Download, Installed… picker; review clean |
+| 10 Docs + push | done | README/CHANGELOG/ROADMAP/plan status + vault notes; push deferred to controller per this task's instructions |

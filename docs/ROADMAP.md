@@ -272,6 +272,8 @@ Spec `docs/superpowers/specs/2026-09-10-round2-design.md`. Built the same day on
 
 6. **Linked + layered pets** (Michael, 2026-09-10) — **props + links DONE 2026-09-10** on `feat/pets`; outfit pipeline proven with a procedural pet + jacket (`examples/pets/hanna`); a Hermes /hatch outfit (paid) remains optional. Layers (body + outfit/prop sheets in lock-step via `currentFrame` + `sourceClipRect`, static PNG props, wardrobe swap-out) and links (pets publish `pets.<name>.state` for each other's rules). Scoped in `docs/superpowers/specs/2026-09-10-linked-and-layered-pets-design.md`; content (transparent-body outfit art) is the real blocker — props first.
 
+7. **Pet looks + look rules + petdex fetcher** — **DONE 2026-09-13** on `feat/pet-looks-petdex`: looks measured from the sheet (`pets.<name>.looks`, `pets --looks`, fallback chain); structured `range`/`flag`/`keyword`/`pet` rule rows compiling onto the existing engine (`~` operator, presets as editable rows, `pet check`, held edges); `signals` rows + one shared sampler per service; `desktop-widgets pet fetch <url|slug>` and the editor's *Get a pet* Download (installer parsed as a manifest, host-pinned assets, sheet validated, provenance in `pet.json`, JSON-LD-only licence). Spec `docs/superpowers/specs/2026-09-10-pet-looks-and-petdex-fetch-design.md`, plan `docs/superpowers/plans/2026-09-13-pet-looks-and-petdex-fetch.md`.
+
 ## Order and what needs Michael's word
 
 1. Phase 1 registry + CLI + JSONC — recommended to start now; no decisions needed beyond "go".
