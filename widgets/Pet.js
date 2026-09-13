@@ -233,12 +233,14 @@ function petName(config) {
   return (parts.length >= 2 ? parts[parts.length - 2] : parts[parts.length - 1] || "pet").toLowerCase().replace(/[^a-z0-9_]+/g, "_")
 }
 
-// Published names for a whole widget list: non-pets are null; a repeated name becomes name_2, name_3…
+// Published names for a whole widget list: non-pets and disabled pets are
+// null and consume no name (a disabled `teto` must not bump the enabled one
+// to `teto_2`); a repeated enabled name becomes name_2, name_3…
 function uniqueNames(configs) {
   var seen = {}, out = []
   for (var i = 0; i < (configs || []).length; i++) {
     var c = configs[i]
-    if (!c || String(c.type) !== "pet") { out.push(null); continue }
+    if (!c || String(c.type) !== "pet" || c.enabled === false) { out.push(null); continue }
     var base = petName(c), n = (seen[base] || 0) + 1
     seen[base] = n
     out.push(n === 1 ? base : base + "_" + n)

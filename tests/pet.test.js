@@ -106,4 +106,5 @@ test("uniqueNames gives later pets on the same sheet a numbered name", () => {
   const cfgs = [{ type: "pet", sheet: "/p/teto/spritesheet.webp" }, { type: "clock" }, { type: "pet", sheet: "/q/teto/spritesheet.webp" }, { type: "pet", name: "teto" }, { type: "pet", name: "Jill" }];
   assert.deepEqual(P.uniqueNames(cfgs), ["teto", null, "teto_2", "teto_3", "jill"]);
   assert.deepEqual(P.uniqueNames([]), []);
+  assert.deepEqual(P.uniqueNames([{ type: "pet", name: "teto", enabled: false }, { type: "pet", name: "teto" }]), [null, "teto"]);
 });

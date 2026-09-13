@@ -92,8 +92,11 @@ Item {
     petStates = next
   }
   // pets.<name> keys: a second pet on the same sheet folder publishes as name_2 (not over the first).
-  readonly property var petNames: Pet.uniqueNames(widgets)
-  function petNameFor(index) { var n = petNames[Number(index)]; return n || null }
+  // Keyed by __index (the raw pre-filter config index), not array position —
+  // widgets skips disabled/errored entries, so position and __index diverge
+  // whenever one precedes a pet.
+  readonly property var petNames: { var names = Pet.uniqueNames(widgets), map = ({}); for (var i = 0; i < widgets.length; i++) if (names[i]) map[widgets[i].__index] = names[i]; return map }
+  function petNameFor(index) { return petNames[Number(index)] || null }
 
   // Save a whole document through the CLI (validated, .bak kept). onDone(ok, message).
   property var saveCallback: null
