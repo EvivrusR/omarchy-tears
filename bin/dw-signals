@@ -3,7 +3,7 @@
   {"t": …, "claude": {"session": 66, "weekly": 46, "resetInMin": 118, "label": "Session (5-hour)"},
    "battery": {"pct": 51, "status": "Charging", "charging": true, "discharging": false, "full": false},
    "agents": {"active": 2}, "cpu": 12.3, "mem": 21.6, "gpu": null, "load": 0.4, "temp": 63.0, "hour": 9}
-Options: --agent claude|codex  (usage file under ~/.local/state/omarchy/agents/usage/)."""
+Options: --agent claude|codex  (usage file under ~/.local/state/omarchy/agents/usage/); --command key=<shell> (repeatable) -> merged into out["custom"][key]."""
 import datetime, importlib.machinery, importlib.util, json, os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,8 +41,33 @@ def count_agents(ps_text):
     return sum(1 for line in ps_text.splitlines() if line.strip().split("/")[-1] in names)
 
 
+def custom_signals(specs, timeout=2.0):
+    """['key=shell command', ...] -> {key: number|text|None}; each command runs in a shell with a timeout."""
+    out = {}
+    for spec in specs:
+        if "=" not in spec: continue
+        key, cmd = spec.split("=", 1)
+        key = key.strip()
+        if not key: continue
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+            if r.returncode != 0: out[key] = None; continue
+            text = r.stdout.strip()
+        except Exception:
+            out[key] = None; continue
+        try:
+            v = float(text); out[key] = int(v) if v.is_integer() else v
+        except ValueError:
+            out[key] = text
+    return out
+
+
 def main(argv):
-    agent = argv[argv.index("--agent") + 1] if "--agent" in argv else "claude"
+    agent, commands, i = "claude", [], 0
+    while i < len(argv):
+        if argv[i] == "--agent" and i + 1 < len(argv): agent = argv[i + 1]; i += 2
+        elif argv[i] == "--command" and i + 1 < len(argv): commands.append(argv[i + 1]); i += 2
+        else: i += 1
     out = {"t": time.time(), "claude": parse_usage(None), "battery": None, "agents": {"active": 0}, "cpu": None, "mem": None, "gpu": None, "load": None, "temp": None, "hour": datetime.datetime.now().hour}
     try:
         p = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"), "omarchy", "agents", "usage", agent + ".json")
@@ -62,6 +87,7 @@ def main(argv):
         b = s.get("battery")
         if b: out["battery"] = {"pct": b["pct"], "status": b["status"], "charging": b["status"] == "Charging", "discharging": b["status"] == "Discharging", "full": b["status"] == "Full"}
     except Exception: pass
+    if commands: out["custom"] = custom_signals(commands)
     print(json.dumps(out)); return 0
 
 

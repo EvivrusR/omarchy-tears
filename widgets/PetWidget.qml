@@ -40,21 +40,26 @@ WidgetCard {
   function apply(text) {
     var s
     try { s = JSON.parse(text) } catch (e) { return }
+    applySignals(s)
+  }
+  function applySignals(s) {
     s.pets = service ? service.petStates : {}            // previous tick's states of every pet, this one included
     engine = Pet.step(rules, s, engine, Date.now())
     petState = engine.state; say = engine.say
     publish()
     if (engine.beatUntil > Date.now()) { beatEnd.interval = Math.max(50, engine.beatUntil - Date.now() + 30); beatEnd.restart() }
   }
+  // Signals come from the service's shared sampler; a pet without a service (tests, drop-in hosts) samples on its own.
+  Connections { target: root.service; function onSignalsChanged() { if (root.service.signals) root.applySignals(root.service.signals) } }
   Process {
-    id: signals
+    id: ownSampler
     command: [String(Qt.resolvedUrl("../bin/dw-signals")).replace(/^file:\/\//, "")]
     stdout: StdioCollector { onStreamFinished: root.apply(text) }
   }
-  Timer { interval: root.intervalSec * 1000; running: root.sheetPath !== ""; repeat: true; triggeredOnStart: true; onTriggered: if (!signals.running) signals.running = true }
+  Timer { interval: root.intervalSec * 1000; running: root.sheetPath !== "" && !root.service; repeat: true; triggeredOnStart: true; onTriggered: if (!ownSampler.running) ownSampler.running = true }
   // Re-evaluate when a beat ends so the pet doesn't linger until the next poll.
   Timer { id: beatEnd; repeat: false; onTriggered: if (root.engine) { root.engine = Pet.step(root.rules, root.engine.signals, root.engine, Date.now()); root.petState = root.engine.state; root.say = root.engine.say; root.publish() } }
-  Component.onCompleted: publish()
+  Component.onCompleted: { publish(); if (service && service.signals) applySignals(service.signals) }
 
   // Sheet geometry + padding trim (Hermes rule: a cell whose max alpha ≤ 8 is
   // blank padding). Done once through a hidden canvas, then released.

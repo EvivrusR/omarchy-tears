@@ -83,6 +83,32 @@ Item {
     overrides = next
   }
 
+  // One signals sampler for every pet (was one dw-signals process per pet per tick).
+  // Commands from every pet's `signals` rows are merged; each pet reads custom.<key>.
+  property var signals: null
+  readonly property var signalCommands: {
+    var seen = {}, out = []
+    for (var i = 0; i < widgets.length; i++) {
+      var w = widgets[i]
+      if (!w || w.type !== "pet" || w.enabled === false) continue
+      var rows = w.signals && typeof w.signals.length === "number" ? w.signals : []
+      for (var r = 0; r < rows.length; r++) { var s = rows[r]; if (s && s.key && s.command && !seen[s.key]) { seen[s.key] = true; out.push(String(s.key) + "=" + String(s.command)) } }
+    }
+    return out
+  }
+  readonly property int signalsInterval: {
+    var best = 0
+    for (var i = 0; i < widgets.length; i++) { var w = widgets[i]; if (w && w.type === "pet" && w.enabled !== false) { var s = Math.max(2, parseInt(w.intervalSec) || 5); if (!best || s < best) best = s } }
+    return (best || 5) * 1000
+  }
+  readonly property bool hasPets: signalsInterval > 0 && widgets.some(function(w) { return w && w.type === "pet" && w.enabled !== false })
+  Process {
+    id: sampler
+    command: [String(Qt.resolvedUrl("bin/dw-signals")).replace(/^file:\/\//, "")].concat(root.signalCommands.reduce(function(a, c) { return a.concat(["--command", c]) }, []))
+    stdout: StdioCollector { onStreamFinished: { try { root.signals = JSON.parse(text) } catch (e) { root.log("signals: bad json") } } }
+  }
+  Timer { interval: root.signalsInterval; running: root.hasPets; repeat: true; triggeredOnStart: true; onTriggered: if (!sampler.running) sampler.running = true }
+
   // Pets publish their state for each other's rules (pets.<name>.state / say / watch).
   property var petStates: ({})
   function publishPet(name, info) {
