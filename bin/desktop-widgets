@@ -899,7 +899,83 @@ def cmd_pet(args, ctx):
 
 
 # ---------------------------------------------------------------- pets (sprite sheets on this machine)
-def sheet_looks(path): return None  # Task 6 (`pets --looks`) replaces this with a real measurement
+FRAME_W, FRAME_H, COLS = 192, 208, 8
+CODEX_ROWS = ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"]
+LEGACY_ROWS = ["idle", "waving", "running", "failed", "review", "jumping", "extra1", "extra2"]
+
+
+def image_geometry(head):
+    """(fmt, w, h) from the first bytes of a PNG or WebP file, or None."""
+    import struct
+    try:
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+            w, h = struct.unpack(">II", head[16:24]); return ("png", w, h)
+        if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+            tag = head[12:16]
+            if tag == b"VP8X":
+                w = int.from_bytes(head[24:27], "little") + 1; h = int.from_bytes(head[27:30], "little") + 1; return ("webp", w, h)
+            if tag == b"VP8L":
+                if head[20] != 0x2f: return None
+                b = int.from_bytes(head[21:25], "little"); return ("webp", (b & 0x3fff) + 1, ((b >> 14) & 0x3fff) + 1)
+            if tag == b"VP8 ":
+                if head[23:26] != b"\x9d\x01\x2a": return None
+                w, h = struct.unpack("<HH", head[26:30]); return ("webp", w & 0x3fff, h & 0x3fff)
+    except (struct.error, IndexError): return None
+    return None
+
+
+def row_names(rows):
+    if rows == 8: return LEGACY_ROWS
+    return CODEX_ROWS + [f"extra{r}" for r in range(10, rows + 1)]
+
+
+def _cell_alpha(path, rows):
+    """Max alpha per cell (row-major), via Pillow or ImageMagick; None when neither is available."""
+    try:
+        from PIL import Image
+        im = Image.open(path).convert("RGBA"); out = []
+        for r in range(rows):
+            for c in range(COLS):
+                cell = im.crop((c * FRAME_W, r * FRAME_H, (c + 1) * FRAME_W, (r + 1) * FRAME_H))
+                out.append(cell.getchannel("A").getextrema()[1])
+        return out
+    except ImportError: pass
+    except Exception: return None
+    if shutil.which("magick"):
+        try:
+            r = subprocess.run(["magick", path, "-crop", f"{FRAME_W}x{FRAME_H}", "+repage", "-format", "%[fx:maxima.a]\n", "info:"], capture_output=True, text=True, timeout=20)
+            vals = [float(x) for x in r.stdout.split()]
+            if r.returncode == 0 and len(vals) >= rows * COLS: return [round(v * 255) for v in vals[:rows * COLS]]
+        except Exception: return None
+    return None
+
+
+def sheet_looks(path):
+    """Rows and user-facing looks of a sheet; measured=False means presence/frames are assumed (no pixel tool)."""
+    try:
+        with open(path, "rb") as fh: head = fh.read(64)
+    except OSError: return None
+    g = image_geometry(head)
+    if not g or g[1] != FRAME_W * COLS or g[2] % FRAME_H or not 8 <= g[2] // FRAME_H <= 11: return None
+    rows = g[2] // FRAME_H; names = row_names(rows)
+    alpha = _cell_alpha(path, rows)
+    counts, present = [], []
+    for r in range(rows):
+        n = 0
+        if alpha:
+            for c in range(min(COLS, 8)):
+                if alpha[r * COLS + c] > 8: n = c + 1
+        counts.append(max(1, n) if alpha else 6); present.append(n > 0 if alpha else True)
+    looks = []
+    if rows == 8:
+        looks = [{"name": names[r], "row": r, "frames": counts[r], "present": present[r]} for r in range(rows)]
+    else:
+        run = next((r for r in (7, 1, 2) if present[r]), None)
+        for r, name in enumerate(names):
+            if name in ("running", "running-right", "running-left"): continue
+            looks.append({"name": name, "row": r, "frames": counts[r], "present": present[r]})
+        looks.insert(1, {"name": "running", "row": run if run is not None else 7, "frames": counts[run] if run is not None else 6, "present": run is not None})
+    return {"rows": rows, "looks": looks, "measured": bool(alpha)}
 
 
 def pet_dirs():
@@ -922,7 +998,8 @@ def list_pets():
             try:
                 with open(os.path.join(pd, "pet.json")) as fh: meta = json.load(fh)
             except (OSError, json.JSONDecodeError): pass
-            out.append({"slug": name, "name": meta.get("displayName") or name, "origin": origin, "sheet": sheet, "description": meta.get("description", "")})
+            out.append({"slug": name, "name": meta.get("displayName") or name, "origin": origin, "sheet": sheet, "description": meta.get("description", ""),
+                        "license": (meta.get("source") or {}).get("license", ""), "source": (meta.get("source") or {}).get("site", "")})
     return out
 
 
@@ -937,10 +1014,20 @@ def list_props():
 
 def cmd_pets(args, ctx):
     pets = list_pets() + list_props()
+    if args.looks is not None:
+        want = [p for p in pets if not p.get("prop") and (args.looks == "" or p["slug"] == args.looks)]
+        if not want: print(f"no pet '{args.looks}'", file=sys.stderr); return 2
+        for p in want:
+            info = sheet_looks(p["sheet"])
+            if not info: print(f"{p['slug']:<20} not a {FRAME_W * COLS}×k·{FRAME_H} sheet"); continue
+            have = [l for l in info["looks"] if l["present"]]
+            tail = "" if info["measured"] else "  (geometry only — install Pillow or ImageMagick to measure)"
+            print(f"{p['slug']:<20} looks: " + ", ".join(f"{l['name']} ×{l['frames']}" for l in have) + f" ({len(have)} of {len(info['looks'])}){tail}")
+        return 0
     if args.json: print(json.dumps({"pets": pets})); return 0
     if not pets:
-        print("no sprite sheets found — get one from https://petdex.dev into ~/.config/omarchy/desktop-widgets.pets/<name>/spritesheet.webp, or /hatch one in Hermes"); return 0
-    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {('prop: ' if p.get('prop') else '') + p['name']:<20} {p['sheet']}")
+        print("no sprite sheets found — `desktop-widgets pet fetch <petdex url>` downloads one, or /hatch one in Hermes"); return 0
+    for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {('prop: ' if p.get('prop') else '') + p['name']:<20} {p.get('license') or '':<9} {p['sheet']}")
     return 0
 
 
@@ -1222,7 +1309,8 @@ def build_parser():
     t = sub.add_parser("types", help="describe widget types and their fields"); t.add_argument("type", nargs="?"); t.set_defaults(fn=cmd_types)
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
     ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
-    pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true"); pt.set_defaults(fn=cmd_pets)
+    pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true")
+    pt.add_argument("--looks", nargs="?", const="", metavar="SLUG", help="rows and frames per look (all pets, or one slug)"); pt.set_defaults(fn=cmd_pets)
     pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable custom rows) | check [index] (validate rules) | fetch <petdex url or slug>")
     pe.add_argument("op", choices=["expand", "check", "fetch"]); pe.add_argument("index", nargs="?", type=int); pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true")
     pe.set_defaults(fn=cmd_pet)

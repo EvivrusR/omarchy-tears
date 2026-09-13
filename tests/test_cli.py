@@ -1,10 +1,23 @@
-import importlib.machinery, importlib.util, io, json, os, pathlib, sys, tempfile, unittest
+import importlib.machinery, importlib.util, io, json, os, pathlib, struct, sys, tempfile, unittest, zlib
 from contextlib import redirect_stdout, redirect_stderr
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_loader("dw", importlib.machinery.SourceFileLoader("dw", str(ROOT / "bin" / "desktop-widgets")))
 dw = importlib.util.module_from_spec(spec); spec.loader.exec_module(dw)
 REGISTRY = dw.load_registry(str(ROOT / "widgets" / "registry.json"))
+
+
+def _png(w, h, blank_cells=()):
+    """Minimal RGBA PNG: opaque everywhere except the listed (row, col) 192×208 cells, which are fully transparent."""
+    rows = []
+    for y in range(h):
+        line = bytearray([0])
+        for x in range(w):
+            a = 0 if (y // 208, x // 192) in blank_cells else 255
+            line += bytes((255, 0, 0, a))
+        rows.append(bytes(line))
+    def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b"")
 
 
 class Fixtures(unittest.TestCase):
@@ -454,6 +467,16 @@ class Cli(unittest.TestCase):
         code, out, err = self.run_cli("pet", "check", "9")
         self.assertEqual(code, 2)
 
+    def test_pets_looks_listing(self):
+        pets = self.home / ".config" / "omarchy" / "desktop-widgets.pets" / "boba"; pets.mkdir(parents=True)
+        (pets / "spritesheet.png").write_bytes(_png(1536, 1872, blank_cells={(4, c) for c in range(8)}))
+        (pets / "pet.json").write_text(json.dumps({"id": "boba", "displayName": "Boba", "source": {"site": "petdex", "license": "CC0"}}))
+        code, out, _ = self.run_cli("pets", "--looks", "boba")
+        self.assertEqual(code, 0); self.assertIn("boba", out); self.assertIn("looks:", out); self.assertIn("idle", out)
+        code, out, _ = self.run_cli("pets", "--json")
+        p = [x for x in json.loads(out)["pets"] if x["slug"] == "boba"][0]
+        self.assertEqual(p["license"], "CC0"); self.assertEqual(p["source"], "petdex")
+
 
 class PetRules(unittest.TestCase):
     RULES = ROOT / "tests" / "fixtures" / "rules"
@@ -480,6 +503,31 @@ class PetRules(unittest.TestCase):
         for src, msg in (("cpu >> 3", "unexpected '3'"), ("(cpu > 1", "missing )"), ("cpu >", "unexpected end"), ("cpu > 1 2", "unexpected '2'")):
             with self.assertRaises(ValueError) as cm: dw.check_expr(src)
             self.assertEqual(str(cm.exception), msg, src)
+
+
+class SheetProbe(unittest.TestCase):
+    def test_image_geometry_headers(self):
+        self.assertEqual(dw.image_geometry(_png(1536, 1872)[:64]), ("png", 1536, 1872))
+        vp8x = b"RIFF" + struct.pack("<I", 100) + b"WEBPVP8X" + struct.pack("<I", 10) + b"\x10\x00\x00\x00" + (1535).to_bytes(3, "little") + (1871).to_bytes(3, "little")
+        self.assertEqual(dw.image_geometry(vp8x), ("webp", 1536, 1872))
+        vp8l = b"RIFF" + struct.pack("<I", 100) + b"WEBPVP8L" + struct.pack("<I", 10) + b"\x2f" + struct.pack("<I", (1535) | ((1871) << 14))
+        self.assertEqual(dw.image_geometry(vp8l), ("webp", 1536, 1872))
+        vp8 = b"RIFF" + struct.pack("<I", 100) + b"WEBPVP8 " + struct.pack("<I", 10) + b"\x00\x00\x00\x9d\x01\x2a" + struct.pack("<HH", 1536, 1872)
+        self.assertEqual(dw.image_geometry(vp8), ("webp", 1536, 1872))
+        self.assertIsNone(dw.image_geometry(b"GIF89a")); self.assertIsNone(dw.image_geometry(b""))
+
+    def test_sheet_looks_geometry_and_pixels(self):
+        d = pathlib.Path(tempfile.mkdtemp()); p = d / "spritesheet.png"; p.write_bytes(_png(1536, 1872, blank_cells={(4, c) for c in range(8)} | {(0, 6), (0, 7)}))
+        info = dw.sheet_looks(str(p))
+        self.assertEqual(info["rows"], 9); names = [l["name"] for l in info["looks"]]
+        self.assertEqual(names, ["idle", "running", "waving", "jumping", "failed", "waiting", "review"])
+        if info["measured"]:
+            by = {l["name"]: l for l in info["looks"]}
+            self.assertFalse(by["jumping"]["present"]); self.assertEqual(by["idle"]["frames"], 6); self.assertTrue(by["running"]["present"])
+        else:
+            self.assertTrue(all(l["present"] for l in info["looks"]))
+        self.assertIsNone(dw.sheet_looks(str(d / "missing.png")))
+        (d / "bad.png").write_bytes(_png(1000, 1000)); self.assertIsNone(dw.sheet_looks(str(d / "bad.png")))
 
 
 if __name__ == "__main__":
