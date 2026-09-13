@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 — 2026-09-13
+- **Kit api + `requires`**: `widgets/registry.json` carries `"api": 1`, the version of what a drop-in may rely on (kit properties/functions, import path, field types, injected `config`/`service`); `types` prints `kit api 1`, `status` an `api:` row. A drop-in's `type.json` may pin `"requires": {"api": 1}`; a mismatch warns in `types`/`validate`/`registry` and the journal, and the drop-in still loads. Contract fixture `tests/fixtures/kit/api-1.json` checked by both suites (plus a Qt6 `qmllint` syntax pass over every shipped QML file when installed), so a core change that breaks the surface fails a test unless `api` is bumped.
+- **Sharing drop-ins**: `desktop-widgets ext add <git url> [name]` clones a drop-in repo into `desktop-widgets.d/<name>/` and validates it; `ext update [name]` pulls `--ff-only` and says when a shell restart is needed; `ext list` shows name/api/origin/commit/in-use; `ext remove <name>` refuses while widgets use the type, `--force` removes them first through the one writer.
+- CLI: `add --corner` / `move --corner` accept `top-center` and `bottom-center` like the registry does (before, only `set N corner=…` could).
+- **Agent skill**: `skills/desktop-widgets/` (SKILL.md + `kit.md` + `contributing.md`) so an AI agent can configure, extend (template / drop-in) or contribute to the plugin from the contracts instead of re-reading the source; symlink it into `~/.claude/skills/`. Roadmap backlog #8 (versioned kit API + `ext` verbs) shipped in this release.
+- Editor: the form pane has a visible, draggable scrollbar (click the track to page), and scrolls sideways when a row needs more room than the pane — pet rules with many keys no longer run off the edge. Rule `say` boxes stretch like the other text keys.
+
 ## 0.7.0 — 2026-09-13
 - **Pet looks**: looks are measured from the sheet (rows with drawn cells; frames per look), published as `pets.<name>.looks`, shown under the sheet field and by `desktop-widgets pets --looks`; missing looks fall back along a chain instead of row 0.
 - **Structured rules**: `range` / `flag` / `keyword` / `pet` rows compile onto the existing rule engine (`~` = case-insensitive contains); presets are now rows you can copy and edit (**Customise these rules**, `pet expand`); `pet check` + inline editor warnings (unknown signal, bad expression, look not on this sheet, min ≥ max…); `and` extra test on any row; held edges — a beat that starts while another plays no longer disappears.

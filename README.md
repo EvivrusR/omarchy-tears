@@ -3,7 +3,8 @@
 Theme-aware widgets drawn on the wallpaper layer of Omarchy 4.x (Quattro):
 a clock, system stats bars, and the output of any shell command. They sit
 above the wallpaper and below every window, recolour with `omarchy theme set`,
-and never touch Omarchy's own files.
+and never touch Omarchy's own files. New widget kinds are drop-in folders
+written against a versioned kit, and a drop-in can be shared as a git repo.
 
 ![system info, agent session and a pet on the left; clock, battery and monitor graphs on the right](docs/screenshot.png)
 
@@ -31,6 +32,7 @@ omarchy plugin disable homelab.desktop-widgets   # widgets vanish immediately
 omarchy plugin enable  homelab.desktop-widgets   # and come back
 omarchy plugin remove  homelab.desktop-widgets --yes
 omarchy plugin update  homelab.desktop-widgets   # fast-forward pull with a diff preview
+desktop-widgets ext update                       # same for drop-ins you installed with `ext add`
 ```
 
 Disable and enable edit one entry in `plugins[]` of `~/.config/omarchy/shell.json`.
@@ -338,13 +340,57 @@ WidgetCard {
 ```
 
 Field types are the registry's (`string`, `integer`, `number`, `boolean`, `enum`, `multi-enum`,
-`color`, `path`, `command`, `rows`), so the CLI validates your keys and the editor
+`color`, `path`, `command`, `text`, `rows`, `apps`), so the CLI validates your keys and the editor
 generates a form for them automatically. Names must match `^[a-z][a-z0-9-]{0,39}$` and
 cannot shadow a built-in type. A broken drop-in is reported and skipped, never fatal.
+
+**Kit api.** The contract a drop-in is written against (the `WidgetCard` / `WidgetText` /
+`Sparkline` properties and functions, the import path, the field types, the injected `config` /
+`service`) has a version: `desktop-widgets types` prints `kit api 1` and `status` an `api:` row.
+It bumps only on a breaking change; adding things is not breaking. A drop-in may pin it:
+
+```json
+{ "displayName": "Hello", "requires": { "api": 1 }, "fields": [ … ] }
+```
+
+On a mismatch `types`, `validate`, `registry` and the shell log warn
+(`drop-in hello wants api 2, plugin provides 1`) and the drop-in still loads — if it then fails
+to compile it is skipped like any other broken drop-in, never fatal.
 
 A **new** drop-in shows up as soon as you add a widget of that type; **editing** an
 existing drop-in's QML needs `omarchy restart shell` (the shell caches compiled QML).
 `omarchy-shell desktop-widgets rescan` re-reads the registry by hand.
+
+## Sharing a drop-in
+
+A drop-in folder *is* a repository: `type.json` + `Widget.qml` at the root, README optional.
+Push it anywhere git can clone from and others install it with one command:
+
+```bash
+desktop-widgets ext add https://github.com/you/dw-wanikani.git      # → ~/.config/omarchy/desktop-widgets.d/wanikani/
+desktop-widgets ext add https://github.com/you/dw-wanikani.git wk   # pick the name yourself
+desktop-widgets add wanikani --set url=http://host:39101/api/summary
+desktop-widgets ext list                                            # name, api, origin, commit, in-use
+desktop-widgets ext update                                          # git pull --ff-only every cloned drop-in
+desktop-widgets ext remove wanikani [--force]                       # refuses while widgets use it; --force removes those too
+```
+
+`ext add` clones (the name comes from the URL unless given, and must obey the drop-in name rule),
+validates `type.json` and `requires`, prints the fields, and deletes the clone again if it is not a
+valid drop-in. `ext update` says which folders changed and reminds you to `omarchy restart shell`
+when one that is on screen did (the shell caches compiled QML). Nothing from the repository runs
+except its `Widget.qml`, exactly as for a hand-made drop-in — read it before you add it, as you
+would any code you install. Exit codes: 0 ok, 2 usage/name, 4 git failed, 5 not a valid drop-in,
+6 already installed.
+
+**Kit api history.** `desktop-widgets types` prints the plugin's api; a drop-in's
+`requires.api` is checked against it (mismatch = warning, still loads).
+
+| plugin | kit api | change |
+|---|---|---|
+| 0.8.0 (2026-09-13) | 1 | first numbered surface: `WidgetCard`/`WidgetText`/`Sparkline` as in `tests/fixtures/kit/api-1.json`, import path `../../plugins/homelab.desktop-widgets/widgets`, field types `string integer number boolean enum multi-enum color path command text rows apps`, injected `config`/`service` |
+
+Drop-ins written before 0.8.0 keep working: they simply have no `requires` and are never warned about.
 
 ## CLI
 
@@ -359,9 +405,13 @@ desktop-widgets status
 | command | what it does |
 |---|---|
 | `list` | index, type, on/off, corner, offsets, one-line summary per widget |
-| `types [type]` | every widget type (built-in and drop-in), or one type's keys with type, default, range and description |
+| `types [type]` | the kit api number, then every widget type (built-in and drop-in); or one type's keys with type, default, range and description |
 | `registry [--json]` | the merged registry; `--json` is what the service consumes |
 | `new <name> [--force]` | scaffold a drop-in widget type under `~/.config/omarchy/desktop-widgets.d/` |
+| `ext add <git url> [name] [--json]` | clone a shared drop-in into `desktop-widgets.d/<name>/`, validate it, print its fields (exit 2 usage, 4 git, 5 invalid, 6 exists) |
+| `ext update [name]` | `git pull --ff-only` one or every cloned drop-in; reports changes and when a shell restart is needed |
+| `ext list [--json]` | installed drop-ins: name, `requires.api`, origin, commit, how many widgets use each |
+| `ext remove <name> [--force]` | delete a drop-in folder; refuses while widgets use the type unless `--force`, which removes those widgets first (validated write, `.bak`) |
 | `validate [file]` | check the config; exit 1 with per-widget messages on errors |
 | `add <type> [--corner C] [--x N] [--y N] [--set key=value ...]` | append a widget |
 | `set <index> key=value ...` | change values; typed by the registry (`show=cpu,mem`, `enabled=false`, `scale=1.5`) |
@@ -421,10 +471,21 @@ watches the top level of the plugin directory and keeps already-compiled QML
 under `widgets/` cached, so a disable/enable or a rescan is not enough.
 
 ```bash
-node --test tests/*.test.js              # pure-JS parsing and formatting
+node --test tests/*.test.js              # pure-JS parsing and formatting + the kit contract
+python3 -m unittest discover -s tests    # CLI, ext verbs, the kit contract again, qmllint pass
 omarchy plugin validate .                # manifest schema
 journalctl --user _COMM=quickshell -f | grep desktop-widgets
 hyprctl layers | grep homelab-desktop-widgets
 ```
+
+**Kit contract.** `tests/fixtures/kit/api-<n>.json` lists what a drop-in may rely on; `tests/kit.test.js`
+and `tests/test_cli.py` fail when the kit QML, the registry's field types, the import path or the
+service injection no longer provide it. Renaming or removing any of it means bumping `api` in
+`widgets/registry.json` and adding the next fixture — adding things needs neither.
+
+**Working on this with an AI agent** (Claude Code, Hermes, or any agent that reads markdown): point it at
+`skills/desktop-widgets/SKILL.md` — the decision path (CLI vs template vs drop-in vs core change), the CLI quick
+reference, the widget kit contract (`kit.md`) and the contribution rules (`contributing.md`). For Claude Code,
+`ln -s "$PWD/skills/desktop-widgets" ~/.claude/skills/desktop-widgets` makes it load on its own.
 
 Design notes: `docs/superpowers/specs/2026-09-09-desktop-widgets-design.md`. Where this is going (registry, CLI, native editor, drop-in widget types): `docs/ROADMAP.md`.

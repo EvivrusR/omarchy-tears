@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "api": 1,
   "common": [
     {
       "key": "type",

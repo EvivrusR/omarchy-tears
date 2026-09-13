@@ -21,6 +21,10 @@ for (const name of fs.readdirSync(fixDir).filter((f) => f.endsWith(".json")).sor
   });
 }
 
+test("registry carries a positive integer kit api number", () => {
+  assert.ok(Number.isInteger(registry.api) && registry.api >= 1, "api: " + registry.api);
+});
+
 test("applyDefaults fills common and type fields without overwriting", () => {
   const e = R.applyDefaults({ type: "clock", x: 10, timeFormat: "H" }, registry);
   assert.equal(e.x, 10);

@@ -1,0 +1,20 @@
+{
+  "api": 1,
+  "importPath": "../../plugins/homelab.desktop-widgets/widgets",
+  "fieldTypes": ["string", "integer", "number", "boolean", "enum", "multi-enum", "color", "path", "command", "text", "rows", "apps"],
+  "injected": ["config", "service"],
+  "files": {
+    "WidgetCard.qml": {
+      "properties": ["config", "content", "scale_", "backdrop", "pad", "topInset", "align", "textColor", "mutedColor", "outlineColor", "halo"],
+      "functions": ["resolveColor", "listOf"]
+    },
+    "WidgetText.qml": {
+      "properties": ["outlineColor", "halo", "outlineMinPx"],
+      "functions": []
+    },
+    "Sparkline.qml": {
+      "properties": ["points", "lineColor", "outlineColor", "fillAlpha", "lineWidth", "pts"],
+      "functions": ["px", "py"]
+    }
+  }
+}

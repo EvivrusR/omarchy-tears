@@ -20,6 +20,13 @@ def _png(w, h, blank_cells=()):
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(b"".join(rows))) + chunk(b"IEND", b"")
 
 
+class Corners(unittest.TestCase):
+    def test_cli_corner_choices_match_registry(self):
+        """`add --corner` / `move --corner` must accept every corner the registry allows (centre ones included)."""
+        field = next(f for f in REGISTRY["common"] if f["key"] == "corner")
+        self.assertEqual(list(dw.CORNERS), list(field["options"]))
+
+
 class Fixtures(unittest.TestCase):
     def test_jsonc_fixtures(self):
         d = ROOT / "tests" / "fixtures" / "jsonc"
@@ -47,7 +54,8 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(dw.apply_defaults({"type": "nope"}, REGISTRY), {"type": "nope"})
 
 
-class Cli(unittest.TestCase):
+class CliCase(unittest.TestCase):
+    """Temp HOME with a two-widget config; `run_cli` captures stdout/stderr."""
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = pathlib.Path(self.tmp.name)
@@ -66,6 +74,15 @@ class Cli(unittest.TestCase):
             code = dw.main(list(argv))
         return code, out.getvalue(), err.getvalue()
 
+    def write_dropin(self, name, type_json='{"displayName":"Hello","fields":[{"key":"name","type":"string","label":"Name","default":"world"}]}', qml="WidgetCard {}"):
+        d = self.home / ".config" / "omarchy" / "desktop-widgets.d" / name
+        d.mkdir(parents=True, exist_ok=True)
+        if type_json is not None: (d / "type.json").write_text(type_json)
+        if qml is not None: (d / "Widget.qml").write_text(qml)
+        return d
+
+
+class Cli(CliCase):
     def test_path(self):
         code, out, _ = self.run_cli("path")
         self.assertEqual((code, out.strip()), (0, str(self.cfg)))
@@ -91,6 +108,12 @@ class Cli(unittest.TestCase):
         code, out, _ = self.run_cli("types", "stats")
         self.assertIn("intervalSec", out); self.assertIn("default 3", out)
         self.assertEqual(self.run_cli("types", "nope")[0], 2)
+
+    def test_api_number_is_printed(self):
+        code, out, _ = self.run_cli("registry", "--json")
+        self.assertEqual(json.loads(out)["api"], 1)
+        self.assertIn("kit api 1", self.run_cli("types")[1])
+        self.assertIn("api:     1", self.run_cli("status")[1])
 
     def test_missing_config(self):
         self.cfg.unlink()
@@ -205,13 +228,6 @@ class Cli(unittest.TestCase):
         finally:
             dw.run_quiet = orig
 
-    def write_dropin(self, name, type_json='{"displayName":"Hello","fields":[{"key":"name","type":"string","label":"Name","default":"world"}]}', qml="WidgetCard {}"):
-        d = self.home / ".config" / "omarchy" / "desktop-widgets.d" / name
-        d.mkdir(parents=True, exist_ok=True)
-        if type_json is not None: (d / "type.json").write_text(type_json)
-        if qml is not None: (d / "Widget.qml").write_text(qml)
-        return d
-
     def test_dropin_merges_into_registry_and_validates(self):
         d = self.write_dropin("hello")
         reg = dw.load_registry()
@@ -236,6 +252,22 @@ class Cli(unittest.TestCase):
         self.assertEqual(len(reg["problems"]), 5)
         code, out, err = self.run_cli("types")
         self.assertEqual(code, 0); self.assertIn("problem", err.lower())
+
+    def test_dropin_requires_api(self):
+        self.write_dropin("fresh", type_json='{"displayName":"F","requires":{"api":1},"fields":[]}')
+        self.write_dropin("future", type_json='{"displayName":"F","requires":{"api":2},"fields":[]}')
+        self.write_dropin("junk", type_json='{"displayName":"F","requires":{"api":"x"},"fields":[]}')
+        self.write_dropin("junk2", type_json='{"displayName":"F","requires":[1],"fields":[]}')
+        reg = dw.load_registry()
+        self.assertIn("fresh", reg["types"]); self.assertIn("future", reg["types"]); self.assertNotIn("junk", reg["types"]); self.assertNotIn("junk2", reg["types"])
+        self.assertEqual(reg["types"]["future"]["requires"], {"api": 2})
+        self.assertNotIn("requires", reg["types"]["clock"])
+        self.assertEqual(reg["warnings"], ["future wants api 2, plugin provides 1"])
+        self.assertEqual(sum("requires.api must be a positive integer" in p for p in reg["problems"]), 2)
+        for argv in (("types",), ("registry",), ("validate",)):
+            code, out, err = self.run_cli(*argv)
+            self.assertEqual(code, 0, err); self.assertIn("future wants api 2, plugin provides 1", err)
+        self.assertNotIn("warnings", dw.load_registry(dropins=False))
 
     def test_sysinfo_custom_art_from_cli(self):
         code, out, err = self.run_cli("add", "sysinfo", "--set", "logo=custom", "--set", "art=/\\_/\\\\n( o.o )")
@@ -661,3 +693,146 @@ class SheetProbe(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Kit(unittest.TestCase):
+    """Kit contract (Python twin of tests/kit.test.js): the surface a drop-in is written against
+    must survive until the registry's `api` is bumped and a new fixture added."""
+    MANIFEST = json.loads((ROOT / "manifest.json").read_text())
+    FIXTURE = ROOT / "tests" / "fixtures" / "kit" / f"api-{REGISTRY['api']}.json"
+
+    def fx(self):
+        self.assertTrue(self.FIXTURE.exists(), f"missing {self.FIXTURE}: a new api number needs a new fixture")
+        fx = json.loads(self.FIXTURE.read_text()); self.assertEqual(fx["api"], REGISTRY["api"]); return fx
+
+    def test_kit_files_declare_surface(self):
+        import re as _re
+        fx = self.fx()
+        for file, want in fx["files"].items():
+            qml = (ROOT / "widgets" / file).read_text()
+            props = _re.findall(r"^\s*(?:readonly\s+)?(?:default\s+)?property\s+\S+\s+(\w+)", qml, _re.M)
+            funcs = _re.findall(r"function\s+(\w+)\s*\(", qml)
+            for p in want["properties"]: self.assertIn(p, props, f"{file}: property {p} gone")
+            for f in want["functions"]: self.assertIn(f, funcs, f"{file}: function {f} gone")
+
+    def test_import_path_and_injection(self):
+        fx = self.fx()
+        hello = (ROOT / "examples" / "drop-in" / "hello" / "Widget.qml").read_text()
+        self.assertIn(f'import "{fx["importPath"]}"', hello)
+        parts = fx["importPath"].split("/")
+        self.assertEqual(parts[-2], self.MANIFEST["id"]); self.assertTrue((ROOT / parts[-1]).is_dir())
+        service = (ROOT / "Service.qml").read_text()
+        for p in fx["injected"]: self.assertIn(f"item.{p} = ", service, f"Service.qml no longer injects {p}")
+
+    def test_field_types_validated_and_covered(self):
+        import inspect
+        fx = self.fx()
+        body = inspect.getsource(dw._check_field)
+        for t in fx["fieldTypes"]: self.assertIn(f'"{t}"', body, f"_check_field no longer handles {t}")
+        used = {f["type"] for f in REGISTRY["common"]} | {f["type"] for t in REGISTRY["types"].values() for f in t.get("fields", [])}
+        self.assertEqual(used - {"type", "petdex"} - set(fx["fieldTypes"]), set(), "registry field types missing from the contract")
+
+    def test_qmllint_shipped_widgets(self):
+        import shutil, subprocess as sp
+        exe = shutil.which("qmllint") or "/usr/lib/qt6/bin/qmllint"
+        if not os.path.exists(exe) or not sp.run([exe, "--version"], capture_output=True, text=True).stdout.startswith("qmllint 6"):
+            exe = "/usr/lib/qt6/bin/qmllint"
+        if not os.path.exists(exe): self.skipTest("Qt6 qmllint not installed")
+        files = [ROOT / "examples" / "drop-in" / "hello" / "Widget.qml", ROOT / "Service.qml", ROOT / "Editor.qml", ROOT / "Companion.qml"]
+        files += sorted((ROOT / "widgets").glob("*.qml")) + sorted((ROOT / "editor").glob("*.qml")) + sorted((ROOT / "arrange").glob("*.qml"))
+        for f in files:
+            with self.subTest(f.name):
+                r = sp.run([exe, str(f)], capture_output=True, text=True)   # syntax errors exit non-zero; unresolved shell imports only warn
+                self.assertEqual(r.returncode, 0, r.stdout[-800:] + r.stderr[-800:])
+
+
+class Ext(CliCase):
+    """`desktop-widgets ext`: drop-ins shared as git repos."""
+    def make_repo(self, name="wani", requires=None, qml="WidgetCard {}"):
+        src = self.home / "src" / name; src.mkdir(parents=True)
+        spec = {"displayName": name.title(), "fields": [{"key": "n", "type": "integer", "label": "N", "default": 1}]}
+        if requires is not None: spec["requires"] = requires
+        (src / "type.json").write_text(json.dumps(spec)); (src / "Widget.qml").write_text(qml)
+        for argv in (["init", "-q"], ["add", "."], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "one"]):
+            self.assertEqual(dw.git(argv, cwd=str(src))[0], 0, argv)
+        return src
+
+    def bump(self, src, msg="two"):
+        (src / "Widget.qml").write_text(f"WidgetCard {{ }}  // {msg}")
+        self.assertEqual(dw.git(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", msg], cwd=str(src))[0], 0)
+
+    def dropin(self, name): return self.home / ".config" / "omarchy" / "desktop-widgets.d" / name
+
+    def test_ext_name(self):
+        for url, want in (("https://x/y/wani.git", "wani"), ("git@x:y/Wani-Kani/", "wani-kani"), ("/tmp/a/b", "b"), ("https://x/y/dw.git/", "dw")):
+            self.assertEqual(dw.ext_name(url), want)
+        for bad in ("https://x/Bad_Name", "https://x/", "", "-"): self.assertRaises(ValueError, dw.ext_name, bad)
+
+    def test_ext_list_shows_local_and_git(self):
+        self.write_dropin("hello")
+        code, out, err = self.run_cli("ext", "list", "--json")
+        self.assertEqual(code, 0, err)
+        rows = json.loads(out); self.assertEqual([r["name"] for r in rows], ["hello"])
+        self.assertEqual((rows[0]["origin"], rows[0]["commit"], rows[0]["inUse"], rows[0]["api"]), ("local", None, 0, None))
+        src = self.make_repo("wani", requires={"api": 1}); self.assertEqual(self.run_cli("ext", "add", str(src))[0], 0)
+        self.run_cli("add", "wani")
+        rows = {r["name"]: r for r in json.loads(self.run_cli("ext", "list", "--json")[1])}
+        self.assertEqual((rows["wani"]["origin"], rows["wani"]["inUse"], rows["wani"]["api"]), (str(src), 1, 1))
+        self.assertEqual(len(rows["wani"]["commit"]), 7)
+        code, out, _ = self.run_cli("ext", "list"); self.assertEqual(code, 0); self.assertIn("wani", out); self.assertIn("hello", out)
+
+    def test_ext_add_clones_validates_and_reports(self):
+        src = self.make_repo("wani", requires={"api": 1})
+        code, out, err = self.run_cli("ext", "add", str(src))
+        self.assertEqual(code, 0, err)
+        d = self.dropin("wani")
+        self.assertTrue((d / ".git").is_dir() and (d / "type.json").exists())
+        self.assertIn("wani", out); self.assertIn("api 1", out); self.assertIn("n", out); self.assertIn("desktop-widgets add wani", out)
+        self.assertIn("wani", dw.load_registry()["types"])
+        self.assertEqual(self.run_cli("ext", "add", str(src))[0], 6)            # exists
+        self.assertEqual(self.run_cli("ext", "add", str(src), "clock")[0], 2)   # built-in name
+        self.assertEqual(self.run_cli("ext", "add", str(src), "Bad")[0], 2)
+        self.assertEqual(self.run_cli("ext", "add", "-oops")[0], 2)
+        self.assertEqual(self.run_cli("ext", "add", str(self.home / "nope"))[0], 4)   # clone failed
+        self.assertFalse(self.dropin("nope").exists())
+        code, out, _ = self.run_cli("ext", "add", str(src), "second", "--json"); self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["name"], "second")
+
+    def test_ext_add_rejects_invalid_and_warns_on_api(self):
+        src = self.make_repo("broken"); (src / "type.json").write_text("{ nope")
+        dw.git(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "break"], cwd=str(src))
+        code, _, err = self.run_cli("ext", "add", str(src))
+        self.assertEqual(code, 5); self.assertIn("type.json", err)
+        self.assertFalse(self.dropin("broken").exists())
+        fut = self.make_repo("future", requires={"api": 99})
+        code, out, err = self.run_cli("ext", "add", str(fut))
+        self.assertEqual(code, 0); self.assertIn("wants api 99, plugin provides 1", err); self.assertTrue(self.dropin("future").exists())
+
+    def test_ext_update_pulls_and_reports(self):
+        src = self.make_repo("wani"); self.assertEqual(self.run_cli("ext", "add", str(src))[0], 0)
+        self.write_dropin("hello")   # no .git: listed as skipped, not an error
+        self.assertEqual(self.run_cli("add", "wani")[0], 0)
+        code, out, _ = self.run_cli("ext", "update"); self.assertEqual(code, 0); self.assertIn("wani", out); self.assertIn("up to date", out)
+        self.assertNotIn("restart shell", out)
+        self.bump(src)
+        code, out, _ = self.run_cli("ext", "update", "wani"); self.assertEqual(code, 0)
+        self.assertIn("updated", out); self.assertIn("restart shell", out)
+        self.assertIn("// two", (self.dropin("wani") / "Widget.qml").read_text())
+        self.assertEqual(self.run_cli("ext", "update", "nope")[0], 2)
+        self.assertEqual(self.run_cli("ext", "update", "hello")[0], 2)   # not a git checkout
+        (self.dropin("wani") / "Widget.qml").write_text("local edit")
+        self.bump(src, "three")
+        code, out, err = self.run_cli("ext", "update", "wani"); self.assertEqual(code, 4); self.assertIn("wani", err)
+
+    def test_ext_remove_refuses_in_use_unless_forced(self):
+        src = self.make_repo("wani"); self.run_cli("ext", "add", str(src))
+        self.run_cli("add", "wani"); self.run_cli("add", "wani")
+        code, _, err = self.run_cli("ext", "remove", "wani"); self.assertEqual(code, 2); self.assertIn("2 widget", err); self.assertIn("--force", err)
+        self.assertTrue(self.dropin("wani").exists())
+        code, out, err = self.run_cli("ext", "remove", "wani", "--force"); self.assertEqual(code, 0, err)
+        self.assertFalse(self.dropin("wani").exists())
+        self.assertEqual([w["type"] for w in json.loads(self.cfg.read_text())["widgets"]], ["clock", "stats"])
+        self.assertTrue(self.cfg.with_suffix(".json.bak").exists())
+        self.assertEqual(self.run_cli("ext", "remove", "nope")[0], 2)
+        self.assertEqual(self.run_cli("ext", "remove", "clock")[0], 2)
+        self.write_dropin("hello"); self.assertEqual(self.run_cli("ext", "remove", "hello")[0], 0); self.assertFalse(self.dropin("hello").exists())

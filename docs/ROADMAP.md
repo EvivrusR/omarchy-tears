@@ -223,7 +223,7 @@ honest), then the mirror and tag. About an evening on top of Phase 3.
    dropdown and a preset can pin them. Estimate: presets one evening,
    variants half an evening per widget.
 
-2. **An agent Skill for extending this tool.** Most of this plugin was built
+2. **An agent Skill for extending this tool.** **DONE 2026-09-13** (`skills/desktop-widgets/`: SKILL.md + `kit.md` + `contributing.md`, tested RED/GREEN with dry-run agents on configure / drop-in / core-change scenarios). Most of this plugin was built
    by an AI agent working from the contracts in this repo. Package that as a
    Skill so anyone can do the same — enhance the plugin, write a drop-in, or
    fork it for their own desktop — with guardrails baked in. Shipped in the
@@ -273,6 +273,36 @@ Spec `docs/superpowers/specs/2026-09-10-round2-design.md`. Built the same day on
 6. **Linked + layered pets** (Michael, 2026-09-10) — **props + links DONE 2026-09-10** on `feat/pets`; outfit pipeline proven with a procedural pet + jacket (`examples/pets/hanna`); a Hermes /hatch outfit (paid) remains optional. Layers (body + outfit/prop sheets in lock-step via `currentFrame` + `sourceClipRect`, static PNG props, wardrobe swap-out) and links (pets publish `pets.<name>.state` for each other's rules). Scoped in `docs/superpowers/specs/2026-09-10-linked-and-layered-pets-design.md`; content (transparent-body outfit art) is the real blocker — props first.
 
 7. **Pet looks + look rules + petdex fetcher** — **DONE 2026-09-13** on `feat/pet-looks-petdex`: looks measured from the sheet (`pets.<name>.looks`, `pets --looks`, fallback chain); structured `range`/`flag`/`keyword`/`pet` rule rows compiling onto the existing engine (`~` operator, presets as editable rows, `pet check`, held edges); `signals` rows + one shared sampler per service; `desktop-widgets pet fetch <url|slug>` and the editor's *Get a pet* Download (installer parsed as a manifest, host-pinned assets, sheet validated, provenance in `pet.json`, JSON-LD-only licence). Spec `docs/superpowers/specs/2026-09-10-pet-looks-and-petdex-fetch-design.md`, plan `docs/superpowers/plans/2026-09-13-pet-looks-and-petdex-fetch.md`.
+
+8. **Versioned kit API + drop-in distribution** — **DONE 2026-09-13** on `feat/api-seam` exactly as scoped below (plan with status table: `docs/superpowers/plans/2026-09-13-api-seam-and-ext.md`; `ext remove` behaves as proposed). (Michael, 2026-09-13; scoped down the same evening from
+   an "extension harness / sub-plugins" idea — the harness was judged an extra layer: drop-in types already
+   *are* the extension point people use, what is missing is a versioned seam and a way to share). Scope:
+   - **API number.** `widgets/registry.json` gains `"api": 1`; `desktop-widgets registry --json`, `types` and
+     `status` print it. It bumps **only** on a breaking change to the kit surface: `WidgetCard` /
+     `WidgetText` / `Sparkline` properties and functions, the `config` shape, the relative import path,
+     the registry field types, the `service` injection. Adding is not breaking.
+   - **`requires` in type.json.** A drop-in may declare `"requires": {"api": 1}`. The CLI (`types`,
+     `validate`) and the service log warn on mismatch (`drop-in wanikani wants api 2, plugin provides 1`);
+     it still loads — the existing rule stands: a drop-in that fails to compile is reported and skipped,
+     never fatal. No other manifest.
+   - **Contract test.** `tests/fixtures/kit/api-1.json` lists the kit surface (every public property /
+     function of the three kit files, the import path, the field-type list); `tests/kit.test.js` and
+     `tests/test_cli.py` check the QML/registry still declare each one, so a core PR that renames or
+     removes something fails a test unless it also bumps `api` and adds `api-2.json`. If `qmllint` is on
+     the machine, the Python suite also lints `examples/drop-in/hello/Widget.qml` and every shipped widget.
+   - **Sharing = git.** A drop-in folder is a repo (`type.json` + `Widget.qml` at the root, README
+     optional). `desktop-widgets ext add <git url> [name]` clones into
+     `~/.config/omarchy/desktop-widgets.d/<name>/` (name from the URL unless given; must match the
+     drop-in name rule), validates `type.json` + `requires`, reports looks/fields; `ext update [name]`
+     pulls every folder with a `.git`; `ext list` shows name, api, origin, commit, in-use count;
+     `ext remove <name>` refuses while a widget of that type exists, `--force` removes the folder and those
+     widgets through the one writer. Nothing runs from the repo but its QML, same as any drop-in.
+   - **Docs.** README "Sharing a drop-in", `skills/desktop-widgets/kit.md` (api + requires + ext verbs),
+     CHANGELOG, minor version bump.
+   - **Non-goals (revisit only on a real request):** extension manifests beyond `requires`, signal-sampler /
+     preset-pack / editor-field / CLI-verb contribution kinds, a registry of extensions.
+   Estimate: one evening — api + `requires` + contract test half, `ext` verbs half. No decisions open;
+   defaults above are the proposal, say if `ext remove` should behave differently.
 
 ## Order and what needs Michael's word
 

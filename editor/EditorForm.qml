@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
@@ -16,10 +17,21 @@ Flickable {
   property var rowContext: ({ looks: [], signals: [], pets: [] })
   property var ruleWarnings: []
   signal edited(string key, var value)
-  contentHeight: column.implicitHeight
-  contentWidth: width
+  // The form scrolls both ways: vertically as usual, and sideways when a row
+  // (pet rules with many keys) wants more room than the pane gives it. The
+  // column itself stays pane-wide so captions wrap where you can read them;
+  // a row that needs more keeps every control at its natural size and runs
+  // past the column into the scrollable area, which is sized from the
+  // column's implicit width. Wrapping captions and plain text inputs opt out
+  // of that measure (Layout.preferredWidth: 0) or their unwrapped length
+  // would widen every form. `gutter` keeps content clear of the scrollbars.
+  readonly property int gutter: Style.spacing.md
+  contentHeight: column.implicitHeight + gutter
+  contentWidth: Math.max(width, column.implicitWidth + gutter)
   clip: true
   boundsBehavior: Flickable.StopAtBounds
+  ScrollBar.vertical: FormScrollBar { }
+  ScrollBar.horizontal: FormScrollBar { }
 
   // `showWhen: {key: value}` on a field hides it until every named key has that value.
   function shown(f) {
@@ -38,7 +50,7 @@ Flickable {
 
   ColumnLayout {
     id: column
-    width: root.width
+    width: root.width - root.gutter
     spacing: Style.spacing.md
     Text { visible: !root.entry; text: "Select a widget on the left, or add one."; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.body }
     Text { visible: !!root.entry && root.fields.length === 0; text: "Unknown type '" + (root.entry ? root.entry.type : "") + "' — fix it in the file."; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.body }
@@ -66,13 +78,13 @@ Flickable {
         }
         Text {
           visible: modelData.key === "name" && root.publishedName !== "" && root.publishedName !== Pet.petName(root.entry)
-          Layout.fillWidth: true; Layout.leftMargin: Style.space(190) + Style.spacing.md
+          Layout.fillWidth: true; Layout.preferredWidth: 0; Layout.leftMargin: Style.space(190) + Style.spacing.md
           wrapMode: Text.WordWrap; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.caption
           text: "another pet is already '" + Pet.petName(root.entry) + "' — this one publishes as pets." + root.publishedName + " (give it a name to pick your own)"
         }
         Text {
           visible: modelData.key === "sheet" && root.entry && String(root.entry.type) === "pet"
-          Layout.fillWidth: true; Layout.leftMargin: Style.space(190) + Style.spacing.md
+          Layout.fillWidth: true; Layout.preferredWidth: 0; Layout.leftMargin: Style.space(190) + Style.spacing.md
           wrapMode: Text.WordWrap; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption
           text: {
             if (!root.looks) return "Looks: idle, running, waving, jumping, failed, waiting, review (contract; measured once the pet renders)"

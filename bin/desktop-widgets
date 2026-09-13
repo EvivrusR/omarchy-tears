@@ -10,7 +10,7 @@ PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
 PLUGIN_DIR = os.path.dirname(HERE)
 REGISTRY_PATH = os.path.join(PLUGIN_DIR, "widgets", "registry.json")
-CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"]
+CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right", "top-center", "bottom-center"]   # keep in step with registry.json common.corner
 DROPIN_NAME = re.compile(r"^[a-z][a-z0-9-]{0,39}$")
 EXAMPLE_DIR = os.path.join(PLUGIN_DIR, "examples", "drop-in", "hello")
 
@@ -64,10 +64,13 @@ def dropin_dir():
     return os.path.join(base, "omarchy", "desktop-widgets.d")
 
 
-def load_dropins(directory, builtin_types):
-    """Drop-in widget types: <dir>/<name>/type.json + Widget.qml. Returns (types, problems)."""
-    types, problems = {}, []
-    if not os.path.isdir(directory): return types, problems
+def load_dropins(directory, builtin_types, api=None):
+    """Drop-in widget types: <dir>/<name>/type.json + Widget.qml. Returns (types, problems, warnings).
+
+    A drop-in may declare {"requires": {"api": N}}; N != the plugin's kit api is a warning
+    (it still loads), a malformed `requires` is a problem (skipped)."""
+    types, problems, warnings = {}, [], []
+    if not os.path.isdir(directory): return types, problems, warnings
     for name in sorted(os.listdir(directory)):
         d = os.path.join(directory, name)
         if not os.path.isdir(d): continue
@@ -82,18 +85,27 @@ def load_dropins(directory, builtin_types):
             problems.append(f"{name}: type.json: {e}"); continue
         if not isinstance(spec, dict) or not isinstance(spec.get("fields", []), list):
             problems.append(f"{name}: type.json must be an object with a fields list"); continue
-        types[name] = {"displayName": spec.get("displayName", name), "description": spec.get("description", ""),
-                       "fields": spec.get("fields", []), "source": qml, "dropIn": True}
-    return types, problems
+        t = {"displayName": spec.get("displayName", name), "description": spec.get("description", ""),
+             "fields": spec.get("fields", []), "source": qml, "dropIn": True}
+        if "requires" in spec:
+            req = spec["requires"]
+            want = req.get("api") if isinstance(req, dict) else None
+            if isinstance(want, bool) or not isinstance(want, int) or want < 1:
+                problems.append(f"{name}: requires.api must be a positive integer"); continue
+            t["requires"] = {"api": want}
+            if api is not None and want != api: warnings.append(f"{name} wants api {want}, plugin provides {api}")
+        types[name] = t
+    return types, problems, warnings
 
 
 def load_registry(path=REGISTRY_PATH, dropins=True):
     with open(path) as fh:
         reg = json.load(fh)
     if dropins:
-        extra, problems = load_dropins(dropin_dir(), reg.get("types", {}))
+        extra, problems, warnings = load_dropins(dropin_dir(), reg.get("types", {}), reg.get("api", 1))
         reg["types"].update(extra)
         if problems: reg["problems"] = problems
+        if warnings: reg["warnings"] = warnings
     return reg
 
 
@@ -261,6 +273,7 @@ def cmd_validate(args, ctx):
         print(f"no config at {path}"); return 0
     widgets, messages = validate_config(parsed, ctx["registry"])
     print_messages(messages, sys.stderr)
+    print_registry_notes(ctx["registry"])
     errors = sum(m["level"] == "error" for m in messages)
     if errors: print(f"{errors} error(s)", file=sys.stderr); return 1
     print(f"ok: {len(widgets)} widget(s), {sum(m['level'] == 'warning' for m in messages)} warning(s)")
@@ -285,6 +298,12 @@ def cmd_list(args, ctx):
     return 0
 
 
+def print_registry_notes(reg):
+    """Broken drop-ins (skipped) and api mismatches (loaded anyway), to stderr."""
+    for pr in reg.get("problems", []): print(f"PROBLEM drop-in {pr}", file=sys.stderr)
+    for w in reg.get("warnings", []): print(f"WARN drop-in {w}", file=sys.stderr)
+
+
 def cmd_types(args, ctx):
     reg = ctx["registry"]
     if args.type:
@@ -300,11 +319,11 @@ def cmd_types(args, ctx):
             type_disp = f["type"] + " (editor control)" if f["type"] == "petdex" else f["type"]
             print(f"  {f['key']:<20} {type_disp:<11} {'; '.join(extra)}" + (f"  — {f['description']}" if f.get("description") else ""))
         return 0
+    print(f"kit api {reg.get('api', 1)}")
     for name, t in reg["types"].items():
         tag = " (drop-in)" if t.get("dropIn") else ""
         print(f"{name:<9} {t.get('displayName', name) + tag:<26} {t.get('description', '')}")
-    for pr in reg.get("problems", []):
-        print(f"PROBLEM drop-in {pr}", file=sys.stderr)
+    print_registry_notes(reg)
     return 0
 
 
@@ -314,8 +333,7 @@ def cmd_registry(args, ctx):
         print(json.dumps(ctx["registry"])); return 0
     for name, t in ctx["registry"]["types"].items():
         print(f"{name:<9} {'drop-in' if t.get('dropIn') else 'built-in':<9} {len(t.get('fields', []))} field(s)" + (f"  {t['source']}" if t.get("source") else ""))
-    for pr in ctx["registry"].get("problems", []):
-        print(f"PROBLEM drop-in {pr}", file=sys.stderr)
+    print_registry_notes(ctx["registry"])
     return 0
 
 
@@ -496,6 +514,7 @@ def cmd_status(args, ctx):
     enabled = plugin_enabled()
     if args.enabled: return 0 if enabled else 1
     print(f"plugin:  {PLUGIN_ID} — {'enabled' if enabled else 'disabled'} (shell.json)")
+    print(f"api:     {ctx['registry'].get('api', 1)}")
     print(f"config:  {ctx['path']}")
     try:
         parsed, raw = read_config(ctx["path"])
@@ -1215,6 +1234,150 @@ def fetch_pet(target, dest_root, http=None, replace=False):
 
 
 # ---------------------------------------------------------------- grid
+# -------------------------------------------------------------------- ext
+# Sharing a drop-in = a git repo with type.json + Widget.qml at its root,
+# cloned under desktop-widgets.d/<name>/. Nothing from the repo runs but its QML.
+def git(args, cwd=None):
+    """Run git without prompting; returns (exit code, combined output)."""
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        r = subprocess.run(["git", *args], cwd=cwd, env=env, capture_output=True, text=True)
+    except OSError as e:
+        return 127, str(e)
+    return r.returncode, (r.stdout + r.stderr).strip()
+
+
+def ext_name(url):
+    """Drop-in name from a git URL: the last path segment, minus .git, lower-cased."""
+    s = str(url or "").strip().rstrip("/")
+    if s.endswith(".git"): s = s[:-4].rstrip("/")
+    s = re.sub(r"^[a-z][a-z0-9+.-]*://", "", s)
+    s = re.sub(r"^[^/@:]+@", "", s)
+    parts = [p for p in re.split(r"[/:]", s) if p]
+    name = parts[-1].lower() if len(parts) >= 2 else ""
+    if not DROPIN_NAME.match(name):
+        raise ValueError(f"cannot derive a drop-in name from '{url}' — pass one (must match {DROPIN_NAME.pattern})")
+    return name
+
+
+def dropin_names():
+    d = dropin_dir()
+    return sorted(n for n in os.listdir(d) if os.path.isdir(os.path.join(d, n))) if os.path.isdir(d) else []
+
+
+def config_widgets(ctx):
+    """The widgets list of the current config, or [] when it is missing or unparsable."""
+    try:
+        parsed, _ = read_config(ctx["path"])
+    except ValueError:
+        return []
+    if isinstance(parsed, list): return parsed
+    return parsed.get("widgets", []) if isinstance(parsed, dict) and isinstance(parsed.get("widgets"), list) else []
+
+
+def ext_info(name, ctx, widgets):
+    d = os.path.join(dropin_dir(), name)
+    t = ctx["registry"]["types"].get(name, {})
+    info = {"name": name, "displayName": t.get("displayName", name), "api": (t.get("requires") or {}).get("api"),
+            "path": d, "git": os.path.isdir(os.path.join(d, ".git")), "origin": "local", "commit": None,
+            "inUse": sum(1 for w in widgets if isinstance(w, dict) and w.get("type") == name),
+            "loaded": bool(t.get("dropIn"))}
+    if info["git"]:
+        code, out = git(["remote", "get-url", "origin"], cwd=d); info["origin"] = out if code == 0 else "?"
+        code, out = git(["rev-parse", "--short", "HEAD"], cwd=d); info["commit"] = out if code == 0 else None
+    return info
+
+
+def ext_list(args, ctx):
+    widgets = config_widgets(ctx)
+    rows = [ext_info(n, ctx, widgets) for n in dropin_names()]
+    if args.json: print(json.dumps(rows)); return 0
+    if not rows: print(f"no drop-ins under {dropin_dir()}"); return 0
+    print(f"{'name':<16} {'api':<4} {'origin':<44} {'commit':<8} in-use")
+    for r in rows:
+        print(f"{r['name']:<16} {str(r['api'] or '-'):<4} {r['origin']:<44} {r['commit'] or '-':<8} {r['inUse']}" + ("" if r["loaded"] else "  (broken — see `types`)"))
+    print_registry_notes(ctx["registry"])
+    return 0
+
+
+def ext_add(args, ctx):
+    url = args.target
+    if not url or url.startswith("-"): print("usage: desktop-widgets ext add <git url> [name]", file=sys.stderr); return 2
+    try:
+        name = args.name or ext_name(url)
+    except ValueError as e:
+        print(str(e), file=sys.stderr); return 2
+    if not DROPIN_NAME.match(name): print(f"name must match {DROPIN_NAME.pattern}", file=sys.stderr); return 2
+    builtin = load_registry(dropins=False)["types"]
+    if name in builtin: print(f"'{name}' is a built-in type; pass another name", file=sys.stderr); return 2
+    d = os.path.join(dropin_dir(), name)
+    if os.path.exists(d): print(f"{d} exists (ext update {name} pulls it; ext remove {name} first to replace it)", file=sys.stderr); return 6
+    os.makedirs(dropin_dir(), exist_ok=True)
+    code, out = git(["-c", "protocol.ext.allow=never", "clone", "-q", "--", url, d])
+    if code != 0:
+        shutil.rmtree(d, ignore_errors=True); print(f"clone failed: {out}", file=sys.stderr); return 4
+    types, problems, warnings = load_dropins(dropin_dir(), builtin, ctx["registry"].get("api", 1))
+    mine = [p for p in problems if p.startswith(name + ":")]
+    if mine or name not in types:
+        for p in mine or [f"{name}: not a valid drop-in"]: print(f"PROBLEM drop-in {p}", file=sys.stderr)
+        shutil.rmtree(d, ignore_errors=True); print(f"removed {d}", file=sys.stderr); return 5
+    for w in warnings:
+        if w.startswith(name + " "): print(f"WARN drop-in {w}", file=sys.stderr)
+    t = types[name]; api = (t.get("requires") or {}).get("api")
+    info = {"name": name, "displayName": t["displayName"], "api": api, "path": d, "origin": url, "fields": [f.get("key") for f in t["fields"] if isinstance(f, dict)]}
+    if args.json: print(json.dumps(info)); return 0
+    print(f"added {name} ({t['displayName']}, api {api if api else '-'}) → {d}")
+    print(f"  fields: {', '.join(k for k in info['fields'] if k) or '(none)'}")
+    print(f"  next:   desktop-widgets add {name}")
+    return 0
+
+
+def ext_update(args, ctx):
+    if args.target and args.target not in dropin_names(): print(f"no drop-in '{args.target}' under {dropin_dir()}", file=sys.stderr); return 2
+    names = [args.target] if args.target else dropin_names()
+    widgets = config_widgets(ctx); failed, changed = 0, []
+    for name in names:
+        d = os.path.join(dropin_dir(), name)
+        if not os.path.isdir(os.path.join(d, ".git")):
+            if args.target: print(f"{name}: not a git checkout (nothing to pull)", file=sys.stderr); return 2
+            print(f"{name:<16} local, skipped"); continue
+        _, before = git(["rev-parse", "--short", "HEAD"], cwd=d)
+        code, out = git(["-c", "protocol.ext.allow=never", "pull", "-q", "--ff-only"], cwd=d)
+        if code != 0: print(f"{name}: pull failed: {out}", file=sys.stderr); failed += 1; continue
+        _, after = git(["rev-parse", "--short", "HEAD"], cwd=d)
+        if before == after: print(f"{name:<16} up to date ({after})")
+        else: print(f"{name:<16} updated {before} → {after}"); changed.append(name)
+    _, problems, warnings = load_dropins(dropin_dir(), load_registry(dropins=False)["types"], ctx["registry"].get("api", 1))
+    for p in problems:
+        if p.split(":", 1)[0] in names: print(f"PROBLEM drop-in {p}", file=sys.stderr)
+    for w in warnings:
+        if w.split(" ", 1)[0] in names: print(f"WARN drop-in {w}", file=sys.stderr)
+    in_use = [n for n in changed if any(isinstance(w, dict) and w.get("type") == n for w in widgets)]
+    if in_use: print(f"restart the shell to load the new QML for {', '.join(in_use)}:  omarchy restart shell")
+    return 4 if failed else 0
+
+
+def ext_remove(args, ctx):
+    name = args.target
+    d = os.path.join(dropin_dir(), name or "")
+    if not name or not DROPIN_NAME.match(name) or not os.path.isdir(d):
+        print(f"no drop-in '{name}' under {dropin_dir()}", file=sys.stderr); return 2
+    widgets = config_widgets(ctx)
+    n = sum(1 for w in widgets if isinstance(w, dict) and w.get("type") == name)
+    if n and not args.force:
+        print(f"{name} is used by {n} widget(s); pass --force to remove them too", file=sys.stderr); return 2
+    if n:
+        def fn(doc, ws): ws[:] = [w for w in ws if not (isinstance(w, dict) and w.get("type") == name)]
+        code = mutate(args, ctx, fn)
+        if code: return code
+    shutil.rmtree(d); print(f"removed {d}")
+    return 0
+
+
+def cmd_ext(args, ctx):
+    return {"list": ext_list, "add": ext_add, "update": ext_update, "remove": ext_remove}[args.op](args, ctx)
+
+
 def cmd_grid(args, ctx):
     try:
         parsed, raw = read_config(ctx["path"])
@@ -1505,6 +1668,9 @@ def build_parser():
     pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")
     pr.add_argument("--json", action="store_true"); pr.add_argument("--force", action="store_true"); pr.add_argument("--description", default="")
     pr.set_defaults(fn=cmd_preset)
+    ex = sub.add_parser("ext", help="drop-ins shared as git repos: list [--json] | add <git url> [name] [--json] | update [name] | remove <name> [--force]")
+    ex.add_argument("op", choices=["list", "add", "update", "remove"]); ex.add_argument("target", nargs="?", help="git url (add) or drop-in name"); ex.add_argument("name", nargs="?", help="drop-in name for add (default: from the url)")
+    ex.add_argument("--force", action="store_true", help="remove: also delete the widgets that use the type"); ex.add_argument("--json", action="store_true"); ex.set_defaults(fn=cmd_ext)
     n = sub.add_parser("new", help="scaffold a drop-in widget type under ~/.config/omarchy/desktop-widgets.d/"); n.add_argument("name"); n.add_argument("--force", action="store_true"); n.set_defaults(fn=cmd_new)
     def idx(sp):
         sp.add_argument("index", type=int); sp.add_argument("--force", action="store_true", help="write even if the file has comments")

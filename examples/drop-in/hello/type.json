@@ -1,6 +1,7 @@
 {
   "displayName": "Hello",
   "description": "A greeting — the smallest possible drop-in widget.",
+  "requires": { "api": 1 },
   "fields": [
     { "key": "name", "type": "string", "label": "Name", "default": "world" },
     { "key": "shout", "type": "boolean", "label": "Shout", "default": false }

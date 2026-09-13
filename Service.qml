@@ -279,6 +279,8 @@ Item {
           var reg = JSON.parse(text)
           var problems = reg.problems || []
           for (var i = 0; i < problems.length; i++) root.log("drop-in problem: " + problems[i])
+          var warnings = reg.warnings || []   // api mismatches: loaded anyway, said once per registry load
+          for (var w = 0; w < warnings.length; w++) root.log("drop-in warning: " + warnings[w])
           root.registry = reg
           root.registryFromCli = true
           if (root.haveConfigText) root.applyConfig()

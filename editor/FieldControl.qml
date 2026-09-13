@@ -113,7 +113,7 @@ RowLayout {
       property var installed: []
       RowLayout {
         spacing: Style.spacing.sm
-        TextField { id: urlField; Layout.fillWidth: true; placeholderText: "https://petdex.dev/pets/<slug>"; enabled: !fetcher.running
+        TextField { id: urlField; Layout.fillWidth: true; Layout.preferredWidth: 0; placeholderText: "https://petdex.dev/pets/<slug>"; enabled: !fetcher.running
           onAccepted: if (text.trim() !== "") fetcher.start(text.trim()) }
         Button { text: fetcher.running ? "Downloading…" : "Download"; bordered: true; enabled: !fetcher.running && urlField.text.trim() !== ""; onClicked: fetcher.start(urlField.text.trim()) }
         Dropdown { showLabel: false; implicitWidth: Style.space(150); value: ""
@@ -121,7 +121,7 @@ RowLayout {
           onChanged: function(v) { if (!v) return; var parts = v.split("|"); root.edited("sheet", parts[0]); root.edited("name", parts[1]); status = "using " + parts[1] }
           Component.onCompleted: lister.running = true }
       }
-      Text { visible: status !== ""; text: status; color: status.indexOf("ERROR") === 0 ? Color.urgent : Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+      Text { visible: status !== ""; text: status; color: status.indexOf("ERROR") === 0 ? Color.urgent : Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.preferredWidth: 0 }
       Process {
         id: fetcher
         property string url: ""
@@ -248,6 +248,7 @@ RowLayout {
           required property var modelData
           required property int index
           Layout.fillWidth: true
+          Layout.minimumWidth: implicitWidth      // never squeeze the keys: overflow sideways instead (the form scrolls)
           spacing: Style.spacing.xs
           Dropdown {
             showLabel: false
@@ -266,8 +267,8 @@ RowLayout {
               readonly property string current: rowRef[k] === undefined ? "" : String(rowRef[k])
               readonly property var opts: root.enumFor(k, current)
               readonly property bool isBool: (root.hint(k) || {}).type === "boolean"
-              Layout.fillWidth: !opts && !isBool && (k === "text" || k === "value" || k === "label" || k === "if" || k === "words" || k === "and" || k === "command")
-              Layout.preferredWidth: Layout.fillWidth ? -1 : (opts ? Style.space(120) : Style.space(64))
+              Layout.fillWidth: !opts && !isBool && (k === "text" || k === "value" || k === "label" || k === "if" || k === "words" || k === "say" || k === "and" || k === "command")
+              Layout.preferredWidth: Layout.fillWidth ? Style.space(140) : (opts ? Style.space(120) : Style.space(64))
               function commit(v) {
                 var a = root.rowsArray(); var row = a[rowIndex]
                 if (v === "" || v === undefined) delete row[k]
@@ -292,7 +293,7 @@ RowLayout {
       }
       Repeater {
         model: root.warnings
-        delegate: Text { required property var modelData; text: "row " + modelData.row + ": " + modelData.message; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+        delegate: Text { required property var modelData; text: "row " + modelData.row + ": " + modelData.message; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true; Layout.preferredWidth: 0 }
       }
       RowLayout {
         spacing: Style.spacing.xs
@@ -325,7 +326,7 @@ RowLayout {
         border.width: 1; border.color: Util.alpha(Color.popups.text, 0.3)
       }
       TextField {
-        Layout.fillWidth: true
+        Layout.fillWidth: true; Layout.preferredWidth: 0
         text: String(root.value === undefined ? "" : root.value)
         onEditingFinished: if (text !== String(root.value === undefined ? "" : root.value)) root.edited(root.field.key, text)
         Keys.onEscapePressed: function(e) { focus = false; e.accepted = true }
