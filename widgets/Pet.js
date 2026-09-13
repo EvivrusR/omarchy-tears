@@ -121,24 +121,79 @@ function step(rules, signals, prev, now) {
 var FRAME_W = 192, FRAME_H = 208, COLS = 8, FRAMES = 6, LOOP_MS = 1100
 var CODEX_ROWS = ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review"]
 var LEGACY_ROWS = ["idle", "waving", "running", "failed", "review", "jumping", "extra1", "extra2"]
-function rowNames(sheetHeight) { return Math.round(sheetHeight / FRAME_H) === 8 ? LEGACY_ROWS : CODEX_ROWS }
-function rowFor(state, sheetHeight, facingLeft) {
+var LOOKS = ["idle", "running", "waving", "jumping", "failed", "waiting", "review"]
+// A look the sheet lacks falls back along this chain, never silently to row 0.
+var FALLBACK = { jumping: ["waving", "idle"], waiting: ["review", "idle"], failed: ["waiting", "idle"], running: ["idle"], review: ["idle"], waving: ["idle"], idle: [] }
+function rowNames(sheetHeight) {
+  var n = Math.round(sheetHeight / FRAME_H)
+  if (n === 8) return LEGACY_ROWS
+  var rows = CODEX_ROWS.slice()
+  for (var r = 10; r <= n; r++) rows.push("extra" + r)      // 10-/11-row exports: rows past 9 are extras
+  return rows
+}
+function rowIndex(name, rows, present) {
+  var i = rows.indexOf(name)
+  return i === -1 || (present && present[i] === false) ? -1 : i
+}
+function rowFor(state, sheetHeight, facingLeft, present) {
   var rows = rowNames(sheetHeight), s = String(state)
   var alias = { run: "running", wave: "waving", jump: "jumping" }
   s = alias[s] || s
-  if (s === "running" && facingLeft && rows.indexOf("running-left") !== -1) s = "running-left"
-  var i = rows.indexOf(s)
-  if (i === -1 && s === "running") i = rows.indexOf("running-right")
-  return i === -1 ? 0 : i
+  var chain = [s].concat(FALLBACK[s] || ["idle"])
+  for (var k = 0; k < chain.length; k++) {
+    var want = chain[k], i = -1
+    if (want === "running") {
+      if (facingLeft) i = rowIndex("running-left", rows, present)
+      if (i === -1) i = rowIndex("running", rows, present)
+      if (i === -1) i = rowIndex("running-right", rows, present)
+    } else i = rowIndex(want, rows, present)
+    if (i !== -1) return i
+  }
+  return 0
+}
+// Which look is actually shown for `state` given the present look names.
+function resolveLook(state, presentNames) {
+  var s = String(state), chain = [s].concat(FALLBACK[s] || ["idle"])
+  for (var k = 0; k < chain.length; k++) if (!presentNames || presentNames.indexOf(chain[k]) !== -1) return chain[k]
+  return "idle"
 }
 // Trailing blank cells (max alpha ≤ 8) are padding: count the real frames per row.
-function trimCounts(maxAlphaPerCell, rows) {
-  var out = []
+function trimInfo(maxAlphaPerCell, rows) {
+  var counts = [], present = []
   for (var r = 0; r < rows; r++) {
     var n = 0
     for (var c = 0; c < COLS && c < FRAMES + 2; c++) { var a = maxAlphaPerCell[r * COLS + c]; if (a !== undefined && a > 8) n = c + 1 }
-    out.push(Math.max(1, n))
+    counts.push(Math.max(1, n)); present.push(n > 0)
   }
+  return { counts: counts, present: present }
+}
+function trimCounts(maxAlphaPerCell, rows) { return trimInfo(maxAlphaPerCell, rows).counts }
+// User-facing looks: one per row, except running-right/running-left/running
+// (Codex sheets) collapse into a single `running` look. `info` (from
+// trimInfo) supplies per-row frame counts and presence; a row past what
+// `info` covers, or no `info` at all, counts as present.
+function looks(sheetHeight, info) {
+  var rows = rowNames(sheetHeight)
+  var counts = (info && info.counts) || [], present = (info && info.present) || []
+  function isPresent(row) { return row < present.length ? !!present[row] : true }
+  function frameCount(row) { return counts[row] || FRAMES }
+  if (rows === LEGACY_ROWS) {
+    var legacy = []
+    for (var r = 0; r < rows.length; r++) legacy.push({ name: rows[r], row: r, frames: frameCount(r), present: isPresent(r) })
+    return legacy
+  }
+  var out = []
+  for (var i = 0; i < rows.length; i++) {
+    var name = rows[i]
+    if (name === "running" || name === "running-right" || name === "running-left") continue
+    out.push({ name: name, row: i, frames: frameCount(i), present: isPresent(i) })
+  }
+  var runOrder = [7, 1, 2], runRow = -1               // running, running-right, running-left
+  for (var k = 0; k < runOrder.length; k++) { if (isPresent(runOrder[k])) { runRow = runOrder[k]; break } }
+  var running = runRow === -1
+    ? { name: "running", row: 7, frames: FRAMES, present: false }
+    : { name: "running", row: runRow, frames: frameCount(runRow), present: true }
+  out.splice(1, 0, running)
   return out
 }
 
@@ -178,4 +233,17 @@ function petName(config) {
   return (parts.length >= 2 ? parts[parts.length - 2] : parts[parts.length - 1] || "pet").toLowerCase().replace(/[^a-z0-9_]+/g, "_")
 }
 
-if (typeof module !== "undefined") module.exports = { layerSpec, layerSpecs, petName, bounds, tokenize, evalExpr, lookup, WATCH, STATES, rulesFor, fill, step, rowFor, rowNames, trimCounts, FRAME_W, FRAME_H, COLS, FRAMES, LOOP_MS }
+// Published names for a whole widget list: non-pets are null; a repeated name becomes name_2, name_3…
+function uniqueNames(configs) {
+  var seen = {}, out = []
+  for (var i = 0; i < (configs || []).length; i++) {
+    var c = configs[i]
+    if (!c || String(c.type) !== "pet") { out.push(null); continue }
+    var base = petName(c), n = (seen[base] || 0) + 1
+    seen[base] = n
+    out.push(n === 1 ? base : base + "_" + n)
+  }
+  return out
+}
+
+if (typeof module !== "undefined") module.exports = { layerSpec, layerSpecs, petName, uniqueNames, bounds, tokenize, evalExpr, lookup, WATCH, STATES, rulesFor, fill, step, rowFor, rowNames, trimCounts, LOOKS, FALLBACK, trimInfo, looks, resolveLook, FRAME_W, FRAME_H, COLS, FRAMES, LOOP_MS }
