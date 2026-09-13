@@ -126,10 +126,11 @@ RowLayout {
         id: fetcher
         property string url: ""
         function start(u) { url = u; status = "downloading " + u + "…"; running = true }
-        command: [root.cliPath, "pet", "fetch", url, "--json", "--force"]
+        command: [root.cliPath, "pet", "fetch", url, "--json"]
         stdout: StdioCollector { id: fetchOut }
         stderr: StdioCollector { id: fetchErr }
         onExited: function(code) {
+          if (code === 6) { status = "already installed — pick it from Installed…"; lister.running = true; return }
           if (code !== 0) { status = "ERROR " + String(fetchErr.text || "").trim().split("\n")[0]; return }
           var r; try { r = JSON.parse(String(fetchOut.text || "")) } catch (e) { status = "ERROR bad reply from the CLI"; return }
           root.edited("sheet", r.sheet); root.edited("name", r.slug)

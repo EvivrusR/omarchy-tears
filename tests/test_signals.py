@@ -23,10 +23,13 @@ class Signals(unittest.TestCase):
         self.assertIn("session", out["claude"]); self.assertIn("active", out["agents"])
 
     def test_custom_signals(self):
-        got = G.custom_signals(["n=echo 12", "f=echo 3.5", "t=printf 'YouTube — Firefox'", "bad=exit 3", "slow=sleep 3", "noeq", "empty=true"], timeout=0.5)
+        got = G.custom_signals(["n=echo 12", "f=echo 3.5", "t=printf 'YouTube — Firefox'", "bad=exit 3", "slow=sleep 3", "noeq", "empty=true", "n1=echo nan", "n2=echo 1e999"], timeout=0.5)
         self.assertEqual(got["n"], 12); self.assertIsInstance(got["n"], int)
         self.assertEqual(got["f"], 3.5); self.assertEqual(got["t"], "YouTube — Firefox")
         self.assertIsNone(got["bad"]); self.assertIsNone(got["slow"]); self.assertNotIn("noeq", got); self.assertEqual(got["empty"], "")
+        self.assertEqual(got["n1"], "nan"); self.assertIsInstance(got["n1"], str)
+        self.assertEqual(got["n2"], "1e999"); self.assertIsInstance(got["n2"], str)
+        json.dumps(got, allow_nan=False)
         out = json.loads(subprocess.run([sys.executable, str(ROOT / "bin" / "dw-signals"), "--command", "x=echo 7"], capture_output=True, text=True, timeout=10).stdout)
         self.assertEqual(out["custom"]["x"], 7)
 

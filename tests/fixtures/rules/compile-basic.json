@@ -16,6 +16,10 @@
     { "kind": "when", "if": "cpu >= 95", "state": "failed", "say": "cpu {cpu}%" },
     { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5 },
     { "kind": "range", "signal": "cpu", "min": true, "look": "idle" },
+    { "kind": "range", "signal": "cpu", "min": "0x10", "look": "idle" },
+    { "kind": "range", "signal": "cpu", "min": "12", "look": "idle" },
+    { "kind": "on", "if": "cpu > 1", "state": "waving", "beat": true },
+    { "kind": "on", "if": "cpu > 1", "state": "waving", "beat": "0x10" },
     { "kind": "bogus" },
     "not a row"
   ],
@@ -35,6 +39,10 @@
     { "kind": "when", "if": "mem >= 90 && (cpu > 50)", "state": "failed", "say": "" },
     { "kind": "when", "if": "cpu >= 95", "state": "failed", "say": "cpu {cpu}%" },
     { "kind": "on", "if": "agents.active == 0", "state": "waving", "beat": 1.5, "say": "" },
-    { "kind": "when", "if": "cpu != null", "state": "idle", "say": "" }
+    { "kind": "when", "if": "cpu != null", "state": "idle", "say": "" },
+    { "kind": "when", "if": "cpu != null", "state": "idle", "say": "" },
+    { "kind": "when", "if": "cpu >= 12", "state": "idle", "say": "" },
+    { "kind": "on", "if": "cpu > 1", "state": "waving", "beat": 1.6, "say": "" },
+    { "kind": "on", "if": "cpu > 1", "state": "waving", "beat": 1.6, "say": "" }
   ]
 }

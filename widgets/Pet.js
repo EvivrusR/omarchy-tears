@@ -94,14 +94,24 @@ var ROW_KINDS = ["range", "flag", "keyword", "pet", "when", "on"]
 
 function q(s) { return "'" + String(s).replace(/'/g, "") + "'" }
 function petKey(name) { return String(name || "").trim().toLowerCase().replace(/[^a-z0-9_]+/g, "_") }
-function hasNum(v) { return typeof v !== "boolean" && v !== undefined && v !== null && v !== "" && !isNaN(Number(v)) }
+function hasNum(v) {
+  if (typeof v === "boolean") return false
+  if (typeof v === "number") return isFinite(v)
+  if (typeof v === "string") return /^-?\d+(\.\d+)?$/.test(v)
+  return false
+}
 function isSet(v) { return v !== undefined && v !== null && v !== "" }
 
 // A structured row → an engine rule. Raw when/on rows pass through.
 function compileRule(row) {
   if (!row || typeof row !== "object") return null
   var kind = String(row.kind || "when"), test = null, state = row.look
-  if (kind === "when" || kind === "on") return { kind: kind, if: String(row.if || ""), state: String(row.state || "idle"), beat: kind === "on" ? Number(row.beat) || 1.6 : undefined, say: String(row.say || "") }
+  if (kind === "when" || kind === "on") {
+    var raw = { kind: kind, if: String(row.if || ""), state: String(row.state || "idle") }
+    if (kind === "on") raw.beat = hasNum(row.beat) && Number(row.beat) > 0 ? Number(row.beat) : 1.6
+    raw.say = String(row.say || "")
+    return raw
+  }
   var sig = String(row.signal || "").trim()
   if (kind === "range") {
     var mn = Number(row.min), mx = Number(row.max), hasMin = hasNum(row.min), hasMax = hasNum(row.max)
@@ -179,6 +189,7 @@ function validateRules(rows, ctx) {
     if (kind === "pet") {
       if (!isSet(r.pet)) push(i, "needs a pet")
       else if (ctx.pets && ctx.pets.indexOf(petKey(r.pet)) === -1) push(i, "unknown pet '" + r.pet + "'")
+      if (!isSet(r.look)) push(i, "needs a look")
       checkLook(i, r.then)
     } else {
       var sig = String(r.signal || "").trim()

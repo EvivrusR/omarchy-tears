@@ -16,7 +16,8 @@
     { "kind": "when", "if": "pets.hanna.state == 'idle' && claude.weekly > 1", "state": "idle" },
     { "kind": "on", "if": "custom.window ~ 'x'", "state": "review", "beat": 1 },
     { "kind": "bogus" },
-    { "kind": "range", "signal": "cpu", "min": true, "look": "idle" }
+    { "kind": "range", "signal": "cpu", "min": true, "look": "idle" },
+    { "kind": "pet", "pet": "jill", "then": "waving" }
   ],
   "expect": [
     { "row": 1, "message": "unknown signal 'nope.pct'" },
@@ -32,6 +33,7 @@
     { "row": 11, "message": "empty test" },
     { "row": 12, "message": "unknown signal 'claude.weekly'" },
     { "row": 14, "message": "unknown kind 'bogus'" },
-    { "row": 15, "message": "min must be a number" }
+    { "row": 15, "message": "min must be a number" },
+    { "row": 16, "message": "needs a look" }
   ]
 }

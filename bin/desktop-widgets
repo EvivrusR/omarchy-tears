@@ -4,7 +4,7 @@ homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
 
 Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
 two engines identical."""
-import argparse, contextlib, datetime, glob, io, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, contextlib, datetime, glob, io, json, math, os, re, shutil, subprocess, sys, tempfile
 
 PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -727,10 +727,14 @@ def check_expr(src):
     return [x for x in t if re.match(r"[A-Za-z_]", x) and x not in ("true", "false", "null")]
 
 
+_NUM_STR = re.compile(r"^-?\d+(\.\d+)?$")
+
+
 def _has_num(v):
-    if v is None or v == "" or isinstance(v, bool): return False
-    try: float(v); return True
-    except (TypeError, ValueError): return False
+    if isinstance(v, bool): return False
+    if isinstance(v, (int, float)): return math.isfinite(v)
+    if isinstance(v, str): return bool(_NUM_STR.match(v))
+    return False
 
 
 def _is_set(v): return v is not None and v != ""
@@ -753,7 +757,7 @@ def compile_rule(row):
     kind = str(row.get("kind") or "when"); state = row.get("look")
     if kind in ("when", "on"):
         out = {"kind": kind, "if": str(row.get("if") or ""), "state": str(row.get("state") or "idle")}
-        if kind == "on": out["beat"] = float(row["beat"]) if _has_num(row.get("beat")) and float(row["beat"]) else 1.6
+        if kind == "on": out["beat"] = float(row["beat"]) if _has_num(row.get("beat")) and float(row["beat"]) > 0 else 1.6
         out["say"] = str(row.get("say") or ""); return _tidy(out)
     sig = str(row.get("signal") or "").strip()
     if kind == "range":
@@ -833,6 +837,7 @@ def validate_rules(rows, ctx):
         if kind == "pet":
             if not _is_set(r.get("pet")): push(i, "needs a pet")
             elif ctx.get("pets") is not None and pet_key(r.get("pet")) not in ctx["pets"]: push(i, f"unknown pet '{r.get('pet')}'")
+            if not _is_set(r.get("look")): push(i, "needs a look")
             check_look(i, r.get("then"))
         else:
             sig = str(r.get("signal") or "").strip()
@@ -849,10 +854,14 @@ def validate_rules(rows, ctx):
 
 
 def rule_ctx_for(widgets, index, looks=None):
-    """Validation context for widget `index`: signal catalogue (+ its custom keys) and the other pets' names."""
+    """Validation context for widget `index`: signal catalogue (+ its custom keys) and the other pets' names.
+    Names come from unique_names, the same dedup the editor publishes as pets.<name>, so a `pet` row naming
+    `teto_2` validates against the same name the running pet actually publishes."""
     entry = widgets[index]
     sigs = list(SIGNAL_KEYS) + [f"custom.{s.get('key')}" for s in entry.get("signals") or [] if isinstance(s, dict) and s.get("key")]
-    pets = [pet_name_of(w) for j, w in enumerate(widgets) if isinstance(w, dict) and w.get("type") == "pet" and j != index]
+    names = unique_names(widgets)
+    me = names[index] if 0 <= index < len(names) else None
+    pets = [n for n in names if n is not None and n != me]
     return {"looks": looks, "signals": sigs, "pets": pets}
 
 
@@ -863,6 +872,21 @@ def pet_name_of(entry):
     return pet_key(parts[-2] if len(parts) >= 2 else (parts[-1] if parts and parts[-1] else "pet"))
 
 
+def unique_names(configs):
+    """Published pet names for a whole widget list, mirroring Pet.uniqueNames: non-pets and disabled pets are
+    None and consume no name (a disabled `teto` must not bump the enabled one to `teto_2`); a repeated enabled
+    name becomes name_2, name_3…"""
+    seen, out = {}, []
+    for c in configs or []:
+        if not isinstance(c, dict) or str(c.get("type")) != "pet" or c.get("enabled") is False:
+            out.append(None); continue
+        base = pet_name_of(c)
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        out.append(base if n == 1 else f"{base}_{n}")
+    return out
+
+
 def cmd_pet(args, ctx):
     try:
         args.index = int(args.target) if args.op != "fetch" and args.target not in (None, "") else None
@@ -871,7 +895,7 @@ def cmd_pet(args, ctx):
     if args.op == "fetch":
         if not args.target: print("pet fetch needs a petdex URL or slug", file=sys.stderr); return 2
         root_dir = os.path.join(_config_base(), "omarchy", "desktop-widgets.pets")
-        try: r = fetch_pet(args.target, root_dir, force=args.force)
+        try: r = fetch_pet(args.target, root_dir, replace=args.replace)
         except FetchError as e: print(str(e), file=sys.stderr); return e.code
         if args.add or args.widget is not None:
             def fn(doc, widgets):
@@ -1067,14 +1091,22 @@ class FetchError(Exception):
     def __init__(self, code, message): super().__init__(message); self.code = code
 
 
+PETDEX_ASSET_HOSTS = ("petdex.dev", "www.petdex.dev", "assets.petdex.dev")
+
+
 def _http_get(url, headers=None, limit=PETDEX_MAX_BYTES):
     import urllib.request, urllib.error
+    from urllib.parse import urlparse
     req = urllib.request.Request(url, headers={"User-Agent": "desktop-widgets/petdex-fetch", "Referer": "https://petdex.dev/", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
+            host = urlparse(r.geturl()).netloc
+            if host not in PETDEX_ASSET_HOSTS: raise FetchError(4, f"redirected off petdex: {host}")
             data = r.read(limit + 1)
     except urllib.error.HTTPError as e:
         raise FetchError(3 if e.code == 404 else 4, f"{'not on petdex' if e.code == 404 else 'network'}: HTTP {e.code} for {url}")
+    except FetchError:
+        raise
     except Exception as e:
         raise FetchError(4, f"network: {e}")
     return data
@@ -1145,10 +1177,12 @@ def petdex_license(html):
     return "unknown"
 
 
-def fetch_pet(target, dest_root, http=None, force=False):
+def fetch_pet(target, dest_root, http=None, replace=False):
     http = http or HTTP_GET
     try: slug = petdex_slug(target)
     except ValueError as e: raise FetchError(2, str(e))
+    dest = os.path.join(dest_root, slug)
+    if os.path.exists(dest) and not replace: raise FetchError(6, f"{dest} exists (use --replace to replace it)")
     page_url = f"https://petdex.dev/pets/{slug}"
     script = http(f"https://petdex.dev/install/{slug}").decode("utf-8", "replace")
     if "exit 1" in script and "curl" not in script: raise FetchError(3, f"'{slug}' is not on petdex")
@@ -1164,8 +1198,6 @@ def fetch_pet(target, dest_root, http=None, force=False):
     license_ = "unknown"
     try: license_ = petdex_license(http(page_url, limit=2 * 1024 * 1024).decode("utf-8", "replace"))
     except Exception: pass
-    dest = os.path.join(dest_root, slug)
-    if os.path.exists(dest) and not force: raise FetchError(6, f"{dest} exists (use --force to replace)")
     os.makedirs(dest_root, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix=".fetch-", dir=dest_root)
     try:
@@ -1462,9 +1494,11 @@ def build_parser():
     ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
     pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true")
     pt.add_argument("--looks", nargs="?", const="", metavar="SLUG", help="rows and frames per look (all pets, or one slug)"); pt.set_defaults(fn=cmd_pets)
-    pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable rows) | check [index] (validate rules) | fetch <petdex url or slug> [--add | --widget N] [--force]")
+    pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable rows) | check [index] (validate rules) | fetch <petdex url or slug> [--add | --widget N] [--replace]")
     pe.add_argument("op", choices=["expand", "check", "fetch"]); pe.add_argument("target", nargs="?", help="widget index, or for fetch a petdex.dev URL / slug")
-    pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true"); pe.add_argument("--add", action="store_true", help="fetch: append a pet widget using it"); pe.add_argument("--widget", type=int, metavar="N", help="fetch: point pet widget N at it")
+    pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true", help="write even if the config has comments (used with --add/--widget)")
+    pe.add_argument("--replace", action="store_true", help="fetch: replace an existing ~/.config/omarchy/desktop-widgets.pets/<slug>/")
+    pe.add_argument("--add", action="store_true", help="fetch: append a pet widget using it"); pe.add_argument("--widget", type=int, metavar="N", help="fetch: point pet widget N at it")
     pe.set_defaults(fn=cmd_pet)
     gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")

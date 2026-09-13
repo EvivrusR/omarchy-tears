@@ -365,7 +365,7 @@ Item {
                 visible: root.doc.length > 0
                 entry: root.selectedEntry
                 registry: root.registry
-                looks: root.selectedEntry && String(root.selectedEntry.type) === "pet" && root.service && root.service.petStates[Pet.petName(root.selectedEntry)] ? (root.service.petStates[Pet.petName(root.selectedEntry)].looks || null) : null
+                looks: root.selectedEntry && String(root.selectedEntry.type) === "pet" && root.service && root.selected >= 0 && root.service.petStates[root.publishedNames[root.selected]] ? (root.service.petStates[root.publishedNames[root.selected]].looks || null) : null
                 publishedName: root.selected >= 0 ? (root.publishedNames[root.selected] || "") : ""
                 rowContext: root.petRowContext
                 ruleWarnings: root.petRuleWarnings

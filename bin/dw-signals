@@ -4,7 +4,7 @@
    "battery": {"pct": 51, "status": "Charging", "charging": true, "discharging": false, "full": false},
    "agents": {"active": 2}, "cpu": 12.3, "mem": 21.6, "gpu": null, "load": 0.4, "temp": 63.0, "hour": 9}
 Options: --agent claude|codex  (usage file under ~/.local/state/omarchy/agents/usage/); --command key=<shell> (repeatable) -> merged into out["custom"][key]."""
-import datetime, importlib.machinery, importlib.util, json, os, subprocess, sys, time
+import datetime, importlib.machinery, importlib.util, json, math, os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -56,7 +56,9 @@ def custom_signals(specs, timeout=2.0):
         except Exception:
             out[key] = None; continue
         try:
-            v = float(text); out[key] = int(v) if v.is_integer() else v
+            v = float(text)
+            if not math.isfinite(v): out[key] = text; continue
+            out[key] = int(v) if v.is_integer() else v
         except ValueError:
             out[key] = text
     return out

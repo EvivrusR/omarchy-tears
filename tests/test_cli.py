@@ -490,9 +490,9 @@ class Cli(unittest.TestCase):
             self.assertEqual(r["slug"], "boba"); self.assertTrue(r["path"].startswith(str(self.home)))
             w = json.loads(self.cfg.read_text())["widgets"][-1]
             self.assertEqual((w["type"], w["name"], w["sheet"]), ("pet", "boba", str(self.home / ".config" / "omarchy" / "desktop-widgets.pets" / "boba" / "spritesheet.webp")))
-            code, out, err = self.run_cli("pet", "fetch", "boba", "--force", "--widget", "0")
+            code, out, err = self.run_cli("pet", "fetch", "boba", "--replace", "--widget", "0")
             self.assertEqual(code, 2); self.assertIn("not a pet", err)                      # widget 0 is the clock
-            code, out, err = self.run_cli("pet", "fetch", "boba", "--force", "--widget", "2")
+            code, out, err = self.run_cli("pet", "fetch", "boba", "--replace", "--widget", "2")
             self.assertEqual(code, 0, err); w2 = json.loads(self.cfg.read_text())["widgets"][2]
             self.assertEqual((w2["type"], w2["name"], w2["sheet"].endswith("boba/spritesheet.webp")), ("pet", "boba", True))
             code, out, err = self.run_cli("pet", "fetch", "https://evil.dev/x")
@@ -588,7 +588,7 @@ class Petdex(unittest.TestCase):
         dw.fetch_pet("boba", str(self.root), self.http)
         with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("boba", str(self.root), self.http)
         self.assertEqual(cm.exception.code, 6)
-        self.assertEqual(dw.fetch_pet("boba", str(self.root), self.http, force=True)["slug"], "boba")
+        self.assertEqual(dw.fetch_pet("boba", str(self.root), self.http, replace=True)["slug"], "boba")
 
     def test_fetch_size_cap(self):
         big = b"x" * (dw.PETDEX_MAX_BYTES + 1)
@@ -621,6 +621,17 @@ class PetRules(unittest.TestCase):
         for src, msg in (("cpu >> 3", "unexpected '3'"), ("(cpu > 1", "missing )"), ("cpu >", "unexpected end"), ("cpu > 1 2", "unexpected '2'")):
             with self.assertRaises(ValueError) as cm: dw.check_expr(src)
             self.assertEqual(str(cm.exception), msg, src)
+
+    def test_unique_names_matches_js(self):
+        cfgs = [
+            {"type": "pet", "sheet": "/p/teto/spritesheet.webp"},
+            {"type": "clock"},
+            {"type": "pet", "sheet": "/q/teto/spritesheet.webp"},
+            {"type": "pet", "name": "teto"},
+            {"type": "pet", "name": "Jill"},
+            {"type": "pet", "name": "teto", "enabled": False},
+        ]
+        self.assertEqual(dw.unique_names(cfgs), ["teto", None, "teto_2", "teto_3", "jill", None])
 
 
 class SheetProbe(unittest.TestCase):

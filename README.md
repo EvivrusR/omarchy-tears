@@ -159,16 +159,19 @@ Per type:
   `and` (an extra raw test). Top-down, first steady match wins. **Customise these rules** in the editor (or
   `desktop-widgets pet expand N`) copies the preset you were watching into editable rows. `desktop-widgets pet
   check` lists rule problems; the editor shows them under the rows. Extra text/number signals: `signals` rows
-  (`key`, `command`) become `custom.<key>` — e.g. the focused window title for a keyword rule. One `dw-signals`
+  (`{"kind": "command", "key": "window", "command": "hyprctl activewindow -j | jq -r .title"}`) become
+  `custom.<key>` — e.g. the focused window title for a keyword rule. One `dw-signals`
   sampler serves every pet. Rules that read another pet see its latest published state, at most one tick old, so
   a chain of three pets reacts across three intervals. Two pets on the same sheet folder publish as `teto` and
   `teto_2` (set `name` to choose).
   **petdex**: paste a `https://petdex.dev/pets/<slug>` URL into the editor's *Get a pet* box and press Download,
-  or `desktop-widgets pet fetch <url|slug> [--add | --widget N]`. The installer script is parsed as a manifest
-  (never run), assets must come from `assets.petdex.dev`, the sheet is validated, and provenance is stored in
-  `pet.json` (`source.site/url/fetchedAt/license`; shown by `desktop-widgets pets`). The licence label is read
-  only from the pet page's JSON-LD `license` field — petdex pages currently publish none, so it shows `unknown`
-  rather than a guessed label. Art stays under `~/.config/omarchy/desktop-widgets.pets/<slug>/`, never in the plugin.
+  or `desktop-widgets pet fetch <url|slug> [--add | --widget N] [--replace]`. The installer script is parsed as
+  a manifest (never run), assets must come from `assets.petdex.dev`, the sheet is validated, and provenance is
+  stored in `pet.json` (`source.site/url/fetchedAt/license`; shown by `desktop-widgets pets`). The licence label
+  is read only from the pet page's JSON-LD `license` field — petdex pages currently publish none, so it shows
+  `unknown` rather than a guessed label. Art stays under `~/.config/omarchy/desktop-widgets.pets/<slug>/`, never
+  in the plugin. A slug already on disk is left alone unless you pass `--replace`; the editor's Download button
+  never replaces an existing download — if the slug is already installed, pick it from *Installed…* instead.
 - **shape**: pure form, no text — a translucent panel, divider, pill or circle to lay *behind* other
   widgets (give it a lower `z`). `kind` (`rect`, `pill`, `circle`, `line`), `width` (320) and `height` (200)
   in px before `scale` (circle uses `width` as its diameter; line uses `height` as its thickness),
@@ -370,7 +373,7 @@ desktop-widgets status
 | `pets --looks [slug]` | which looks each sheet has and how many frames (Pillow or ImageMagick `magick` measures pixels; otherwise geometry-only, noted) |
 | `pet expand <index>` | copy the preset rules a pet is watching into editable `rules` rows and set `watch: custom` |
 | `pet check [index] [--json]` | list rule problems for one pet or all pets (unknown signal, bad expression, look not on this sheet, min ≥ max…) |
-| `pet fetch <url\|slug> [--add \| --widget N] [--force] [--json]` | download a pet from petdex.dev into `~/.config/omarchy/desktop-widgets.pets/<slug>/`, optionally wiring it into the config; exit codes: 0 ok, 2 not a petdex URL, 3 not found, 4 network, 5 invalid pet, 6 exists |
+| `pet fetch <url\|slug> [--add \| --widget N] [--replace] [--json]` | download a pet from petdex.dev into `~/.config/omarchy/desktop-widgets.pets/<slug>/`, optionally wiring it into the config; `--replace` replaces an existing download (default: refuses, no network spent); exit codes: 0 ok, 2 not a petdex URL, 3 not found, 4 network, 5 invalid pet, 6 exists |
 | `grid [on\|off\|toggle\|<px>]` | show or set arrange-mode grid snapping |
 | `preset list [--json]` / `show <name>` | whole-screen layouts: shipped (`presets/` in the plugin) and yours (`~/.config/omarchy/desktop-widgets.presets/<name>.jsonc`, which shadow shipped names) |
 | `preset apply <name>` | replace the whole layout with a preset (validated, previous layout in `.bak`) |
