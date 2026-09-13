@@ -650,7 +650,251 @@ def cmd_apps(args, ctx):
     return 0
 
 
+# ---------------------------------------------------------------- pet rules (twin of widgets/Pet.js; tests/fixtures/rules keep them equal)
+PET_LOOKS = ["idle", "running", "waving", "jumping", "failed", "waiting", "review"]
+PET_FALLBACK = {"jumping": ["waving", "idle"], "waiting": ["review", "idle"], "failed": ["waiting", "idle"], "running": ["idle"], "review": ["idle"], "waving": ["idle"], "idle": []}
+SIGNAL_KEYS = ["claude.session", "claude.weekly", "claude.resetInMin", "claude.label", "battery.pct", "battery.status", "battery.charging", "battery.discharging", "battery.full", "agents.active", "cpu", "mem", "gpu", "load", "temp", "hour"]
+ROW_KINDS = ["range", "flag", "keyword", "pet", "when", "on"]
+PET_WATCH = {
+    "claude": [
+        {"kind": "range", "signal": "claude.resetInMin", "min": 200, "look": "jumping", "beat": 2.2, "say": "fresh session!"},
+        {"kind": "range", "signal": "claude.session", "min": 95, "look": "failed", "say": "session cap {claude.session}%"},
+        {"kind": "range", "signal": "claude.session", "min": 80, "look": "waiting", "say": "{claude.session}% used"},
+        {"kind": "range", "signal": "agents.active", "min": 1, "look": "running", "say": ""},
+        {"kind": "range", "signal": "claude.session", "min": 50, "look": "review", "say": "{claude.session}%"}],
+    "battery": [
+        {"kind": "flag", "signal": "battery.full", "is": True, "look": "waving", "beat": 2.2, "say": "full!"},
+        {"kind": "range", "signal": "battery.pct", "max": 10, "and": "battery.discharging", "look": "failed", "say": "{battery.pct}%!"},
+        {"kind": "range", "signal": "battery.pct", "max": 20, "and": "battery.discharging", "look": "waiting", "say": "{battery.pct}%"},
+        {"kind": "flag", "signal": "battery.charging", "is": True, "look": "running", "say": ""}],
+    "agents": [
+        {"kind": "range", "signal": "agents.active", "max": 1, "look": "waving", "beat": 2.2, "say": "all done"},
+        {"kind": "range", "signal": "agents.active", "min": 1, "look": "running", "say": "{agents.active} working"}],
+    "cpu": [
+        {"kind": "range", "signal": "cpu", "min": 95, "look": "failed", "say": "cpu {cpu}%"},
+        {"kind": "range", "signal": "cpu", "min": 60, "look": "running", "say": "cpu {cpu}%"},
+        {"kind": "range", "signal": "cpu", "min": 30, "look": "review", "say": ""}],
+    "mem": [
+        {"kind": "range", "signal": "mem", "min": 95, "look": "failed", "say": "mem {mem}%"},
+        {"kind": "range", "signal": "mem", "min": 80, "look": "waiting", "say": "mem {mem}%"},
+        {"kind": "range", "signal": "mem", "min": 50, "look": "review", "say": ""}],
+    "gpu": [
+        {"kind": "range", "signal": "gpu", "min": 95, "look": "failed", "say": "gpu {gpu}%"},
+        {"kind": "range", "signal": "gpu", "min": 60, "look": "running", "say": "gpu {gpu}%"},
+        {"kind": "range", "signal": "gpu", "min": 30, "look": "review", "say": ""},
+        {"kind": "when", "if": "gpu == null", "state": "idle", "say": "no gpu here"}],
+}
+_TOKEN = re.compile(r"\s*(>=|<=|==|!=|&&|\|\||~|[()!<>]|-?\d+(?:\.\d+)?|'[^']*'|\"[^\"]*\"|[A-Za-z_][\w.]*)")
+
+
+def tokenize_expr(src):
+    out, pos, n = [], 0, len(src)
+    while pos < n:
+        m = _TOKEN.match(src, pos)
+        if not m or m.end() == pos:
+            if src[pos:].strip() == "": break
+            raise ValueError(f"bad token near '{src[pos:pos + 8]}'")
+        out.append(m.group(1)); pos = m.end()
+    return out
+
+
+def check_expr(src):
+    """Parse like Pet.js evalExpr (same error messages) and return the identifiers it reads."""
+    t = tokenize_expr(str(src or "")); i = [0]
+    def peek(): return t[i[0]] if i[0] < len(t) else None
+    def nxt():
+        v = peek(); i[0] += 1; return v
+    def atom():
+        k = nxt()
+        if k is None: raise ValueError("unexpected end")
+        if k == "(":
+            or_expr()
+            if nxt() != ")": raise ValueError("missing )")
+        elif k == "!": atom()
+    def cmp():
+        atom()
+        if peek() in (">=", "<=", ">", "<", "==", "!=", "~"): nxt(); atom()
+    def and_expr():
+        cmp()
+        while peek() == "&&": nxt(); cmp()
+    def or_expr():
+        and_expr()
+        while peek() == "||": nxt(); and_expr()
+    or_expr()
+    if i[0] != len(t): raise ValueError(f"unexpected '{t[i[0]]}'")
+    return [x for x in t if re.match(r"[A-Za-z_]", x) and x not in ("true", "false", "null")]
+
+
+def _has_num(v):
+    if v is None or v == "" or isinstance(v, bool): return False
+    try: float(v); return True
+    except (TypeError, ValueError): return False
+
+
+def _is_set(v): return v is not None and v != ""
+
+
+def _q(s): return "'" + str(s).replace("'", "") + "'"
+
+
+def pet_key(name): return re.sub(r"[^a-z0-9_]+", "_", str(name or "").strip().lower())
+
+
+def resolve_look(state, present):
+    for name in [str(state)] + PET_FALLBACK.get(str(state), ["idle"]):
+        if not present or name in present: return name
+    return "idle"
+
+
+def compile_rule(row):
+    if not isinstance(row, dict): return None
+    kind = str(row.get("kind") or "when"); state = row.get("look")
+    if kind in ("when", "on"):
+        out = {"kind": kind, "if": str(row.get("if") or ""), "state": str(row.get("state") or "idle")}
+        if kind == "on": out["beat"] = float(row["beat"]) if _has_num(row.get("beat")) and float(row["beat"]) else 1.6
+        out["say"] = str(row.get("say") or ""); return _tidy(out)
+    sig = str(row.get("signal") or "").strip()
+    if kind == "range":
+        has_min, has_max = _has_num(row.get("min")), _has_num(row.get("max"))
+        mn = _num(float(row["min"])) if has_min else None; mx = _num(float(row["max"])) if has_max else None
+        if has_min and has_max:
+            test = f"({sig} >= {mn} || {sig} < {mx})" if float(row["min"]) > float(row["max"]) else f"({sig} >= {mn} && {sig} < {mx})"
+        elif has_min: test = f"{sig} >= {mn}"
+        elif has_max: test = f"{sig} < {mx}"
+        else: test = f"{sig} != null"
+    elif kind == "flag":
+        test = f"{sig} == " + ("false" if row.get("is") is False or str(row.get("is")) == "false" else "true")
+    elif kind == "keyword":
+        words = [w.strip() for w in str(row.get("words") or "").split(",") if w.strip()]
+        match = str(row.get("match") or "any")
+        if not words: test = "false"
+        else:
+            parts = [f"{sig} ~ {_q(w)}" for w in words]
+            test = "(" + " && ".join(parts) + ")" if match == "all" else ("!(" + " || ".join(parts) + ")" if match == "none" else "(" + " || ".join(parts) + ")")
+    elif kind == "pet":
+        test = f"pets.{pet_key(row.get('pet'))}.state == {_q(row.get('look'))}"; state = row.get("then")
+    else: return None
+    if _is_set(row.get("and")): test = f"{test} && ({row['and']})"
+    beat = float(row["beat"]) if _has_num(row.get("beat")) and float(row["beat"]) > 0 else None
+    out = {"kind": "on" if beat else "when", "if": test, "state": str(state or "idle")}
+    if beat: out["beat"] = beat
+    out["say"] = str(row.get("say") or "")
+    return _tidy(out)
+
+
+def _tidy(rule):
+    """Match the JS shape after JSON round-trip: integral beats print as ints."""
+    if "beat" in rule and float(rule["beat"]).is_integer(): rule["beat"] = int(rule["beat"])
+    return rule
+
+
+def compile_rules(rows):
+    return [r for r in (compile_rule(x) for x in (rows or [])) if r]
+
+
+def _identifiers(src): return check_expr(src)
+
+
+def _known_signal(path, ctx):
+    sigs = (ctx or {}).get("signals")
+    if sigs is None: return True
+    if path in sigs: return True
+    m = re.match(r"^pets\.([a-z0-9_]+)\.(state|say|watch)$", path)
+    if m: return ctx.get("pets") is None or m.group(1) in ctx["pets"]
+    return False
+
+
+def validate_rules(rows, ctx):
+    """[{row, message}] — same messages as Pet.validateRules; ctx keys looks/signals/pets, None skips."""
+    out = []
+    if not isinstance(rows, list): return out
+    ctx = ctx or {}; looks = ctx.get("looks")
+    push = lambda i, m: out.append({"row": i, "message": m})
+    def check_look(i, name):
+        if not looks or not _is_set(name): return
+        if str(name) not in looks: push(i, f"look '{name}' is not on this sheet (shows {resolve_look(name, looks)})")
+    def check_signal(i, sig):
+        if not _known_signal(sig, ctx): push(i, f"unknown signal '{sig}'")
+    def check_expr(i, src):
+        try:
+            for ident in _identifiers(src): check_signal(i, ident)
+        except ValueError as e: push(i, f"bad expression: {e}")
+    for i, r in enumerate(rows):
+        if not isinstance(r, dict): push(i, "not a row"); continue
+        kind = str(r.get("kind") or "when")
+        if kind not in ROW_KINDS: push(i, f"unknown kind '{kind}'"); continue
+        if kind in ("when", "on"):
+            src = str(r.get("if") or "").strip()
+            if not src: push(i, "empty test")
+            else: check_expr(i, src)
+            check_look(i, r.get("state")); continue
+        if kind == "pet":
+            if not _is_set(r.get("pet")): push(i, "needs a pet")
+            elif ctx.get("pets") is not None and pet_key(r.get("pet")) not in ctx["pets"]: push(i, f"unknown pet '{r.get('pet')}'")
+            check_look(i, r.get("then"))
+        else:
+            sig = str(r.get("signal") or "").strip()
+            if not sig: push(i, "needs a signal")
+            else: check_signal(i, sig)
+            if kind == "range":
+                if _is_set(r.get("min")) and not _has_num(r.get("min")): push(i, "min must be a number")
+                if _is_set(r.get("max")) and not _has_num(r.get("max")): push(i, "max must be a number")
+                if _has_num(r.get("min")) and _has_num(r.get("max")) and float(r["min"]) >= float(r["max"]) and sig != "hour": push(i, "min must be below max")
+            if kind == "keyword" and not any(w.strip() for w in str(r.get("words") or "").split(",")): push(i, "needs words")
+            check_look(i, r.get("look"))
+        if _is_set(r.get("and")): check_expr(i, r["and"])
+    return out
+
+
+def rule_ctx_for(widgets, index, looks=None):
+    """Validation context for widget `index`: signal catalogue (+ its custom keys) and the other pets' names."""
+    entry = widgets[index]
+    sigs = list(SIGNAL_KEYS) + [f"custom.{s.get('key')}" for s in entry.get("signals") or [] if isinstance(s, dict) and s.get("key")]
+    pets = [pet_name_of(w) for j, w in enumerate(widgets) if isinstance(w, dict) and w.get("type") == "pet" and j != index]
+    return {"looks": looks, "signals": sigs, "pets": pets}
+
+
+def pet_name_of(entry):
+    n = str(entry.get("name") or "").strip()
+    if n: return pet_key(n)
+    parts = [p for p in str(entry.get("sheet") or "").rstrip("/").split("/")]
+    return pet_key(parts[-2] if len(parts) >= 2 else (parts[-1] if parts and parts[-1] else "pet"))
+
+
+def cmd_pet(args, ctx):
+    if args.op == "expand":
+        if args.index is None: print("pet expand needs a widget index", file=sys.stderr); return 2
+        def fn(doc, widgets):
+            e = index_arg(widgets, args.index)
+            if e.get("type") != "pet": raise ValueError(f"widget {args.index} is not a pet")
+            watch = str(e.get("watch") or "claude")
+            if watch == "custom": raise ValueError(f"widget {args.index} is already custom (edit its rules)")
+            e["rules"] = json.loads(json.dumps(PET_WATCH.get(watch, []))); e["watch"] = "custom"
+        return mutate(args, ctx, fn)
+    if args.op == "check":
+        try: parsed, _ = read_config(ctx["path"])
+        except ValueError as e: print(f"ERROR   {e}", file=sys.stderr); return 1
+        widgets = parsed.get("widgets", []) if isinstance(parsed, dict) else (parsed or [])
+        report = {}
+        for i, w in enumerate(widgets):
+            if not isinstance(w, dict) or w.get("type") != "pet": continue
+            if args.index is not None and i != args.index: continue
+            looks = None
+            info = sheet_looks(os.path.expanduser(str(w.get("sheet") or ""))) if w.get("sheet") else None
+            if info and info.get("measured"): looks = [l["name"] for l in info["looks"] if l["present"]]
+            report[str(i)] = validate_rules(w.get("rules") or [], rule_ctx_for(widgets, i, looks)) if str(w.get("watch") or "claude") == "custom" else []
+        if args.json: print(json.dumps({"widgets": report})); return 0
+        for i, msgs in report.items():
+            for m in msgs: print(f"widget {i} row {m['row']}: {m['message']}" if args.index is None else f"row {m['row']}: {m['message']}")
+        if not any(report.values()): print("rules ok")
+        return 0
+    return 2
+
+
 # ---------------------------------------------------------------- pets (sprite sheets on this machine)
+def sheet_looks(path): return None  # Task 6 (`pets --looks`) replaces this with a real measurement
+
+
 def pet_dirs():
     home = os.path.expanduser("~")
     hermes = os.environ.get("HERMES_HOME") or os.path.join(home, ".hermes")
@@ -972,6 +1216,9 @@ def build_parser():
     rg = sub.add_parser("registry", help="print the merged registry (built-in + drop-ins)"); rg.add_argument("--json", action="store_true"); rg.set_defaults(fn=cmd_registry)
     ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
     pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true"); pt.set_defaults(fn=cmd_pets)
+    pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable custom rows) | check [index] (validate rules) | fetch <petdex url or slug>")
+    pe.add_argument("op", choices=["expand", "check", "fetch"]); pe.add_argument("index", nargs="?", type=int); pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true")
+    pe.set_defaults(fn=cmd_pet)
     gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")
     pr.add_argument("op", choices=["list", "show", "apply", "save", "remove"]); pr.add_argument("name", nargs="?")

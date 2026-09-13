@@ -952,6 +952,10 @@
           "type": "rows",
           "label": "Rules (custom)",
           "options": [
+            "range",
+            "flag",
+            "keyword",
+            "pet",
             "when",
             "on"
           ],
@@ -959,7 +963,29 @@
           "showWhen": {
             "watch": "custom"
           },
-          "description": "top-down, first `when` wins; `on` fires a timed beat when its test turns true. Signals: claude.session, claude.weekly, claude.resetInMin, battery.pct/charging/discharging/full, agents.active, cpu, mem, gpu, load, temp, hour. States: idle, running, waving, jumping, failed, waiting, review"
+          "rowFields": {
+            "signal": { "enum": "signals" },
+            "look": { "enum": "looks" },
+            "then": { "enum": "looks" },
+            "state": { "enum": "looks" },
+            "pet": { "enum": "pets" },
+            "is": { "type": "boolean" },
+            "match": { "options": ["any", "all", "none"] },
+            "min": { "type": "number" },
+            "max": { "type": "number" },
+            "beat": { "type": "number" }
+          },
+          "description": "top-down, first steady match wins; a row with `beat` plays once for that many seconds when it turns true. range = brackets on a number (min ≤ value < max; min > max wraps for hour); flag = true/false; keyword = comma-separated words in a text signal (match any/all/none); pet = when another pet shows a look; when/on = a raw test (signals: claude.session, claude.weekly, claude.resetInMin, claude.label, battery.pct/status/charging/discharging/full, agents.active, cpu, mem, gpu, load, temp, hour, custom.<key>, pets.<name>.state/say). `and` adds a raw extra condition to any row."
+        },
+        {
+          "key": "signals",
+          "type": "rows",
+          "label": "Extra signals",
+          "options": [
+            "command"
+          ],
+          "default": [],
+          "description": "commands sampled with the pet's signals; each becomes custom.<key> (numbers parsed, text kept). e.g. key window, command `hyprctl activewindow -j | jq -r .title`"
         },
         {
           "key": "size",

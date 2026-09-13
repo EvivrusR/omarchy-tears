@@ -426,6 +426,50 @@ class Cli(unittest.TestCase):
         self.assertIn('"type": "template"', self.cfg.read_text())
         self.assertTrue(self.cfg.with_name("desktop-widgets.json.bak").exists())
 
+    def test_pet_expand_and_check(self):
+        self.cfg.write_text(json.dumps({"widgets": [{"type": "pet", "sheet": "/nowhere/spritesheet.webp", "watch": "battery", "name": "jill"},
+                                                    {"type": "pet", "sheet": "/nowhere/b.webp", "watch": "custom", "rules": [
+                                                        {"kind": "range", "signal": "nope", "min": 1, "look": "failed"},
+                                                        {"kind": "pet", "pet": "jill", "look": "failed", "then": "waving"}]}]}))
+        code, out, err = self.run_cli("pet", "expand", "0")
+        self.assertEqual(code, 0, err)
+        w = json.loads(self.cfg.read_text())["widgets"][0]
+        self.assertEqual(w["watch"], "custom"); self.assertEqual(w["rules"], dw.PET_WATCH["battery"])
+        code, out, err = self.run_cli("pet", "expand", "0")
+        self.assertEqual(code, 2); self.assertIn("already custom", err)
+        code, out, _ = self.run_cli("pet", "check", "1")
+        self.assertEqual(code, 0); self.assertIn("row 0: unknown signal 'nope'", out); self.assertNotIn("row 1", out)
+        code, out, _ = self.run_cli("pet", "check", "--json")
+        self.assertEqual(json.loads(out)["widgets"]["1"][0]["row"], 0)
+        self.assertEqual(json.loads(out)["widgets"].get("0", []), [])
+
+
+class PetRules(unittest.TestCase):
+    RULES = ROOT / "tests" / "fixtures" / "rules"
+
+    def test_presets_equal_shared_fixture(self):
+        self.assertEqual(dw.PET_WATCH, json.loads((self.RULES / "presets.json").read_text()))
+
+    def test_compile_matches_shared_fixture(self):
+        fx = json.loads((self.RULES / "compile-basic.json").read_text())
+        got = json.loads(json.dumps(dw.compile_rules(fx["rows"])))
+        self.assertEqual(got, fx["expect"])
+
+    def test_validate_matches_shared_fixture(self):
+        fx = json.loads((self.RULES / "validate-basic.json").read_text())
+        self.assertEqual(dw.validate_rules(fx["rows"], fx["ctx"]), fx["expect"])
+        self.assertEqual(dw.validate_rules(fx["rows"][:2], {"looks": None, "signals": None, "pets": None}), [])
+        self.assertEqual(dw.validate_rules("nope", fx["ctx"]), [])
+
+    def test_tokenize_and_parse_match_js_errors(self):
+        self.assertEqual(dw.tokenize_expr("cpu >= 95 && !(a ~ 'x')"), ["cpu", ">=", "95", "&&", "!", "(", "a", "~", "'x'", ")"])
+        with self.assertRaises(ValueError) as cm: dw.tokenize_expr("cpu $ 3")
+        self.assertEqual(str(cm.exception), "bad token near ' $ 3'")
+        self.assertEqual(dw.check_expr("pets.jill.state == 'failed' && cpu > 1"), ["pets.jill.state", "cpu"])
+        for src, msg in (("cpu >> 3", "unexpected '3'"), ("(cpu > 1", "missing )"), ("cpu >", "unexpected end"), ("cpu > 1 2", "unexpected '2'")):
+            with self.assertRaises(ValueError) as cm: dw.check_expr(src)
+            self.assertEqual(str(cm.exception), msg, src)
+
 
 if __name__ == "__main__":
     unittest.main()

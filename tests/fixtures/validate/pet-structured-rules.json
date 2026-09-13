@@ -1,0 +1,7 @@
+{ "config": { "widgets": [ { "type": "pet", "sheet": "/x/spritesheet.webp", "watch": "custom", "rules": [
+    { "kind": "range", "signal": "battery.pct", "max": 20, "look": "waiting" },
+    { "kind": "flag", "signal": "battery.charging", "is": true, "look": "running" },
+    { "kind": "keyword", "signal": "custom.window", "words": "youtube", "look": "review" },
+    { "kind": "pet", "pet": "jill", "look": "failed", "then": "waving", "beat": 2 } ],
+    "signals": [ { "kind": "command", "key": "window", "command": "hyprctl activewindow -j | jq -r .title" } ] } ] },
+  "expect": { "widgets": 1, "errors": 0, "warnings": 0 } }
