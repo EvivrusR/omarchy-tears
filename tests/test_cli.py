@@ -479,7 +479,8 @@ class Cli(unittest.TestCase):
 
     def test_pet_fetch_cli_add_and_widget(self):
         fx = ROOT / "tests" / "fixtures" / "petdex"
-        pages = {"https://petdex.dev/install/boba": (fx / "install-curated.sh").read_bytes(), "https://petdex.dev/pets/boba": b"CC0",
+        pages = {"https://petdex.dev/install/boba": (fx / "install-curated.sh").read_bytes(),
+                 "https://petdex.dev/pets/boba": b'<script type="application/ld+json">' + json.dumps({"@type": "CreativeWork", "license": "https://creativecommons.org/publicdomain/zero/1.0/"}).encode() + b'</script>',
                  "https://assets.petdex.dev/curated/boba/petjson-v2.json": json.dumps({"id": "boba", "displayName": "Boba", "spritesheetPath": "spritesheet.webp"}).encode(),
                  "https://assets.petdex.dev/curated/boba/sprite-v2.webp": _png(1536, 1872)}
         old = dw.HTTP_GET; dw.HTTP_GET = lambda url, headers=None, limit=None: pages[url]
@@ -511,8 +512,13 @@ class Petdex(unittest.TestCase):
             "https://petdex.dev/install/cat-sam": (self.FX / "install-community.sh").read_bytes(),
             "https://petdex.dev/install/badhost": (self.FX / "install-badhost.sh").read_bytes(),
             "https://petdex.dev/install/missing": (self.FX / "install-missing.sh").read_bytes(),
-            "https://petdex.dev/pets/boba": b"<html>... <span>CC0</span> ...</html>",
-            "https://petdex.dev/pets/cat-sam": b"<html>licensed CC-BY-NC by someone</html>",
+            "https://petdex.dev/pets/boba": b'<html><head><script type="application/ld+json">' + json.dumps([
+                {"@context": "https://schema.org", "@type": "CreativeWork", "@id": "https://petdex.dev/pets/boba#pet", "name": "Boba", "license": "https://creativecommons.org/publicdomain/zero/1.0/"},
+                {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": []},
+            ]).encode() + b'</script></head><body></body></html>',
+            "https://petdex.dev/pets/cat-sam": b'<html><head><script type="application/ld+json">' + json.dumps(
+                {"@context": "https://schema.org", "@type": "CreativeWork", "name": "Cat Sam", "license": "https://creativecommons.org/licenses/by-nc/4.0/"}
+            ).encode() + b'</script></head><body></body></html>',
             "https://assets.petdex.dev/curated/boba/petjson-v2.json": json.dumps({"id": "boba", "displayName": "Boba", "description": "tea", "spritesheetPath": "spritesheet.webp"}).encode(),
             "https://assets.petdex.dev/curated/boba/sprite-v2.webp": self.sheet,
             "https://assets.petdex.dev/pets/cat-sam-9f3a1c/petjson.json": json.dumps({"id": "cat-sam", "displayName": "Cat Sam", "spritesheetPath": "spritesheet.webp"}).encode(),
@@ -540,7 +546,21 @@ class Petdex(unittest.TestCase):
         self.assertEqual(dw.parse_install_script((self.FX / "install-community.sh").read_text())["displayName"], "Cat Sam")
         for f in ("install-badhost.sh", "install-missing.sh", "install-404.sh"):
             with self.assertRaises(ValueError, msg=f): dw.parse_install_script((self.FX / f).read_text())
-        self.assertEqual(dw.petdex_license("<b>CC-BY-SA</b>"), "CC-BY-SA"); self.assertEqual(dw.petdex_license("cc0 1.0"), "CC0"); self.assertEqual(dw.petdex_license("nothing"), "unknown")
+
+    def test_petdex_license_reads_json_ld_only(self):
+        self.assertEqual(dw.petdex_license("<b>CC-BY-SA</b>"), "unknown")   # free text is never trusted
+        self.assertEqual(dw.petdex_license("nothing"), "unknown")
+        cc0 = '<script type="application/ld+json">' + json.dumps({"@context": "https://schema.org", "@type": "CreativeWork", "license": "https://creativecommons.org/publicdomain/zero/1.0/"}) + '</script>'
+        self.assertEqual(dw.petdex_license(cc0), "CC0")
+        by = '<script type="application/ld+json">' + json.dumps({"@type": "CreativeWork", "license": "cc-by"}) + '</script>'
+        self.assertEqual(dw.petdex_license(by), "CC-BY")
+        null_lic = '<script type="application/ld+json">' + json.dumps({"@type": "CreativeWork", "license": None}) + '</script>'
+        self.assertEqual(dw.petdex_license(null_lic), "unknown")
+        listed = '<script type="application/ld+json">' + json.dumps([
+            {"@context": "https://schema.org", "@type": "CreativeWork", "name": "Boba", "license": "https://creativecommons.org/licenses/by-nc/4.0/"},
+            {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": []},
+        ]) + '</script>'
+        self.assertEqual(dw.petdex_license(listed), "CC-BY-NC")
 
     def test_fetch_curated_and_community(self):
         r = dw.fetch_pet("https://petdex.dev/pets/boba", str(self.root), self.http)

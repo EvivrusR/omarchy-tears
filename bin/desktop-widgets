@@ -1109,10 +1109,37 @@ def parse_install_script(text):
     return {"petjson": files["pet.json"], "sheet": files["spritesheet.webp"], "displayName": m.group(1) if m else ""}
 
 
+_LDJSON_SCRIPT = re.compile(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
+_LICENSE_URL_MAP = (
+    ("creativecommons.org/publicdomain/zero", "CC0"),
+    ("/licenses/by-nc-sa/", "CC-BY-NC-SA"),
+    ("/licenses/by-nc/", "CC-BY-NC"),
+    ("/licenses/by-sa/", "CC-BY-SA"),
+    ("/licenses/by/", "CC-BY"),
+)
+_LICENSE_LABELS = {"CC0", "CC-BY", "CC-BY-SA", "CC-BY-NC", "CC-BY-NC-SA"}
+
+
+def _normalise_license(value):
+    if not isinstance(value, str) or not value.strip(): return None
+    low = value.strip().lower()
+    for needle, label in _LICENSE_URL_MAP:
+        if needle in low: return label
+    lab = re.sub(r"\s+", "-", value.strip().upper())
+    return lab if lab in _LICENSE_LABELS else None
+
+
 def petdex_license(html):
-    t = str(html or "").upper().replace("‑", "-")
-    for lab in ("CC-BY-NC-SA", "CC-BY-NC", "CC-BY-SA", "CC-BY", "CC0"):
-        if lab in t or lab.replace("-", " ") in t: return lab
+    """Read a pet page's licence ONLY from its JSON-LD CreativeWork block(s) —
+    the free HTML text carries no per-pet licence, only the site's own
+    licence-picker copy (which regexing the raw text used to false-positive on)."""
+    for block in _LDJSON_SCRIPT.findall(str(html or "")):
+        try: data = json.loads(block)
+        except (ValueError, TypeError): continue
+        for item in (data if isinstance(data, list) else [data]):
+            if not isinstance(item, dict) or item.get("@type") != "CreativeWork": continue
+            lab = _normalise_license(item.get("license"))
+            if lab: return lab
     return "unknown"
 
 
