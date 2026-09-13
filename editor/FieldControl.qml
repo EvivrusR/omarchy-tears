@@ -156,7 +156,38 @@ RowLayout {
   }
 
   // rows: a small editor for template rows — kind dropdown + that kind's keys.
-  readonly property var rowKeys: ({ heading: ["text"], text: ["text"], kv: ["label", "value"], bar: ["label", "value", "text", "max", "warnAt"], spacer: ["height"], when: ["if", "state", "say"], on: ["if", "state", "beat", "say"], image: ["image", "z", "x", "y", "scale"], sheet: ["sheet", "z", "x", "y", "scale", "follow"] })
+  readonly property var rowKeys: ({ heading: ["text"], text: ["text"], kv: ["label", "value"], bar: ["label", "value", "text", "max", "warnAt"], spacer: ["height"],
+    when: ["if", "state", "say"], on: ["if", "state", "beat", "say"],
+    range: ["signal", "min", "max", "look", "beat", "say", "and"], flag: ["signal", "is", "look", "beat", "say", "and"], keyword: ["signal", "words", "match", "look", "beat", "say", "and"], pet: ["pet", "look", "then", "beat", "say"],
+    image: ["image", "z", "x", "y", "scale"], sheet: ["sheet", "z", "x", "y", "scale", "follow"], command: ["key", "command"] })
+  readonly property var numericKeys: ({ warnAt: true, height: true, min: true, max: true, beat: true })
+  property var rowContext: ({ looks: [], signals: [], pets: [] })
+  property var warnings: []
+  function hint(k) { var rf = root.field.rowFields || {}; return rf[k] || null }
+  function enumFor(k, current) {
+    var h = hint(k), list = []
+    if (!h) return null
+    if (h.options) list = h.options.slice()
+    else if (h.enum === "looks") list = (root.rowContext.looks || []).slice()
+    else if (h.enum === "signals") list = (root.rowContext.signals || []).slice()
+    else if (h.enum === "pets") list = (root.rowContext.pets || []).slice()
+    if (!list.length && !h.options) return null                       // nothing known yet: fall back to a text box
+    if (current !== "" && list.indexOf(current) === -1) list.unshift(current)
+    return list.map(function(o) { return { value: o, label: o } })
+  }
+  function newRow(kind) {
+    switch (kind) {
+      case "range": return { kind: "range", signal: "cpu", min: 60, look: "running" }
+      case "flag": return { kind: "flag", signal: "battery.charging", is: true, look: "running" }
+      case "keyword": return { kind: "keyword", signal: "claude.label", words: "", match: "any", look: "review" }
+      case "pet": return { kind: "pet", pet: (root.rowContext.pets || [])[0] || "", look: "failed", then: "waving", beat: 2 }
+      case "when": return { kind: "when", if: "", state: "idle" }
+      case "command": return { kind: "command", key: "", command: "" }
+      case "image": return { kind: "image", image: "" }
+      case "sheet": return { kind: "sheet", sheet: "" }
+      default: return { kind: kind, text: "" }
+    }
+  }
   function rowsArray() {
     var v = root.value
     var a = []
@@ -184,22 +215,31 @@ RowLayout {
           }
           Repeater {
             model: root.rowKeys[String(modelData.kind || "text")] || ["text"]
-            delegate: TextField {
+            delegate: Loader {
               required property var modelData
               readonly property string k: String(modelData)
               readonly property var rowRef: parent.modelData
-              Layout.fillWidth: k === "text" || k === "value" || k === "label"
-              Layout.preferredWidth: Layout.fillWidth ? -1 : Style.space(64)
-              placeholderText: k
-              text: rowRef[k] === undefined ? "" : String(rowRef[k])
-              onEditingFinished: {
-                var a = root.rowsArray(); var row = a[parent.index]
-                if (text === "") delete row[k]
-                else if (k === "warnAt" || k === "height") { var n = parseFloat(text); if (!isNaN(n)) row[k] = n }
-                else row[k] = text
-                if (JSON.stringify(a[parent.index]) !== JSON.stringify(root.rowsArray()[parent.index])) root.emitRows(a)
+              readonly property int rowIndex: parent.index
+              readonly property string current: rowRef[k] === undefined ? "" : String(rowRef[k])
+              readonly property var opts: root.enumFor(k, current)
+              readonly property bool isBool: (root.hint(k) || {}).type === "boolean"
+              Layout.fillWidth: !opts && !isBool && (k === "text" || k === "value" || k === "label" || k === "if" || k === "words" || k === "and" || k === "command")
+              Layout.preferredWidth: Layout.fillWidth ? -1 : (opts ? Style.space(120) : Style.space(64))
+              function commit(v) {
+                var a = root.rowsArray(); var row = a[rowIndex]
+                if (v === "" || v === undefined) delete row[k]
+                else if (root.numericKeys[k]) { var n = parseFloat(v); if (!isNaN(n)) row[k] = n }
+                else row[k] = v
+                if (JSON.stringify(a[rowIndex]) !== JSON.stringify(root.rowsArray()[rowIndex])) root.emitRows(a)
               }
-              Keys.onEscapePressed: function(e) { focus = false; e.accepted = true }
+              sourceComponent: isBool ? rowBool : (opts ? rowEnum : rowText)
+              Component { id: rowBool; Item { implicitWidth: sw.implicitWidth + hintText.implicitWidth + Style.spacing.xs; implicitHeight: sw.implicitHeight
+                RowLayout { spacing: Style.spacing.xs; Text { id: hintText; text: k; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption }
+                  ToggleSwitch { id: sw; checked: rowRef[k] !== false && rowRef[k] !== "false"; onToggled: commit(!(rowRef[k] !== false && rowRef[k] !== "false")) } } } }
+              Component { id: rowEnum; Dropdown { showLabel: false; value: current; options: opts; onChanged: function(v) { commit(v) } } }
+              Component { id: rowText; TextField { placeholderText: k; text: current
+                onEditingFinished: commit(text)
+                Keys.onEscapePressed: function(e) { focus = false; e.accepted = true } } }
             }
           }
           Button { text: "↑"; bordered: true; enabled: index > 0; onClicked: { var a = root.rowsArray(); var t = a[index - 1]; a[index - 1] = a[index]; a[index] = t; root.emitRows(a) } }
@@ -207,7 +247,21 @@ RowLayout {
           Button { text: "✕"; bordered: true; onClicked: { var a = root.rowsArray(); a.splice(index, 1); root.emitRows(a) } }
         }
       }
-      Button { text: "+ row"; bordered: true; onClicked: { var a = root.rowsArray(); a.push({ kind: "text", text: "" }); root.emitRows(a) } }
+      Repeater {
+        model: root.warnings
+        delegate: Text { required property var modelData; text: "row " + modelData.row + ": " + modelData.message; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.caption; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+      }
+      RowLayout {
+        spacing: Style.spacing.xs
+        Repeater {
+          model: (root.field.options || []).indexOf("range") !== -1 ? ["range", "flag", "keyword", "pet", "when"] : [String((root.field.options || [])[0] || "text")]
+          delegate: Button {
+            required property var modelData
+            text: "+ " + modelData; bordered: true
+            onClicked: { var a = root.rowsArray(); a.push(root.newRow(String(modelData))); root.emitRows(a) }
+          }
+        }
+      }
     }
   }
   Component {

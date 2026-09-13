@@ -13,6 +13,8 @@ Flickable {
   property var registry: null
   property var looks: null
   property string publishedName: ""
+  property var rowContext: ({ looks: [], signals: [], pets: [] })
+  property var ruleWarnings: []
   signal edited(string key, var value)
   contentHeight: column.implicitHeight
   contentWidth: width
@@ -52,7 +54,15 @@ Flickable {
           Layout.fillWidth: true
           field: modelData
           value: Model.valueOf(root.entry, modelData.key, root.registry)
+          rowContext: root.rowContext
+          warnings: modelData.key === "rules" ? root.ruleWarnings : []
           onEdited: function(key, value) { root.edited(key, value) }
+        }
+        Button {
+          visible: modelData.key === "watch" && root.entry && String(root.entry.type) === "pet" && String(Model.valueOf(root.entry, "watch", root.registry)) !== "custom"
+          text: "Customise these rules"; bordered: true; tooltipText: "copies the preset's rows into Rules and switches to custom"
+          Layout.leftMargin: Style.space(190) + Style.spacing.md
+          onClicked: { root.edited("rules", Pet.presetRows(Model.valueOf(root.entry, "watch", root.registry))); root.edited("watch", "custom") }
         }
         Text {
           visible: modelData.key === "name" && root.publishedName !== "" && root.publishedName !== Pet.petName(root.entry)
