@@ -38,6 +38,10 @@ Item {
   property bool saving: false
   readonly property bool dirty: Model.dirty(doc, saved)
   readonly property var selectedEntry: selected >= 0 && selected < doc.length ? doc[selected] : null
+  // Published pet names, computed like the service does: an entry with an
+  // active validation error is treated as disabled (Pet.js stays pure — this
+  // mirrors Service.qml excluding both disabled AND errored widgets from `widgets`).
+  readonly property var publishedNames: Pet.uniqueNames(doc.map(function(e, i) { if (!e || Model.firstError(root.messages, i) === "") return e; var c = {}; for (var k in e) c[k] = e[k]; c.enabled = false; return c }))
 
   function loadFromService() {
     var raw = service && service.rawWidgets ? service.rawWidgets : []
@@ -348,7 +352,7 @@ Item {
                 entry: root.selectedEntry
                 registry: root.registry
                 looks: root.selectedEntry && String(root.selectedEntry.type) === "pet" && root.service && root.service.petStates[Pet.petName(root.selectedEntry)] ? (root.service.petStates[Pet.petName(root.selectedEntry)].looks || null) : null
-                publishedName: root.selected >= 0 ? (Pet.uniqueNames(root.doc)[root.selected] || "") : ""
+                publishedName: root.selected >= 0 ? (root.publishedNames[root.selected] || "") : ""
                 onEdited: function(key, value) { root.setField(key, value) }
               }
               ColumnLayout {

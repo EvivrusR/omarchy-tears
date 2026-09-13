@@ -20,7 +20,7 @@ WidgetCard {
   readonly property bool flip: config.flip === true
   readonly property int intervalSec: Math.max(2, parseInt(config.intervalSec) || 5)
   property var service: null                       // injected by the service: other pets' states live there
-  readonly property string petName: service && service.petNameFor(config.__index) ? service.petNameFor(config.__index) : Pet.petName(config)
+  readonly property string petName: { var n = service ? service.petNameFor(config.__index) : null; return n || Pet.petName(config) }
   readonly property var layers: Pet.layerSpecs(listOf(config.layers))
   readonly property real cellScale: size / Pet.FRAME_H    // cell px → screen px
   function layerUrl(src) { var p = String(src).replace(/^~/, Quickshell.env("HOME")); return p.charAt(0) === "/" ? "file://" + p : p }
