@@ -4,7 +4,7 @@ homelab.desktop-widgets Omarchy shell plugin. Python 3 stdlib only.
 
 Validation and defaults mirror widgets/Registry.js; tests/fixtures keep the
 two engines identical."""
-import argparse, datetime, glob, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, contextlib, datetime, glob, io, json, os, re, shutil, subprocess, sys, tempfile
 
 PLUGIN_ID = "homelab.desktop-widgets"
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -862,6 +862,30 @@ def pet_name_of(entry):
 
 
 def cmd_pet(args, ctx):
+    try:
+        args.index = int(args.target) if args.op != "fetch" and args.target not in (None, "") else None
+    except ValueError:
+        print("index must be a number", file=sys.stderr); return 2
+    if args.op == "fetch":
+        if not args.target: print("pet fetch needs a petdex URL or slug", file=sys.stderr); return 2
+        root_dir = os.path.join(_config_base(), "omarchy", "desktop-widgets.pets")
+        try: r = fetch_pet(args.target, root_dir, force=args.force)
+        except FetchError as e: print(str(e), file=sys.stderr); return e.code
+        if args.add or args.widget is not None:
+            def fn(doc, widgets):
+                if args.widget is not None:
+                    e = index_arg(widgets, args.widget)
+                    if e.get("type") != "pet": raise ValueError(f"widget {args.widget} is not a pet")
+                    e["sheet"] = r["sheet"]; e["name"] = r["slug"]
+                else: widgets.append({"type": "pet", "sheet": r["sheet"], "name": r["slug"]})
+            if args.json:   # --json wants only the result dict on stdout; mutate's own errors still go to stderr
+                with contextlib.redirect_stdout(io.StringIO()): code = mutate(args, ctx, fn, create=True)
+            else:
+                code = mutate(args, ctx, fn, create=True)
+            if code: return code
+        if args.json: print(json.dumps(r)); return 0
+        have = [l for l in r["looks"] if l["present"]]
+        print(f"{r['slug']}  {r['name']}  {r['license']}\n{r['path']}\n{len(have)} looks: " + ", ".join(l["name"] for l in have)); return 0
     if args.op == "expand":
         if args.index is None: print("pet expand needs a widget index", file=sys.stderr); return 2
         def fn(doc, widgets):
@@ -1029,6 +1053,104 @@ def cmd_pets(args, ctx):
         print("no sprite sheets found — `desktop-widgets pet fetch <petdex url>` downloads one, or /hatch one in Hermes"); return 0
     for p in pets: print(f"{p['slug']:<20} {p['origin']:<14} {('prop: ' if p.get('prop') else '') + p['name']:<20} {p.get('license') or '':<9} {p['sheet']}")
     return 0
+
+
+# ---------------------------------------------------------------- petdex fetcher (parse the installer as a manifest; never run it)
+PETDEX_MAX_BYTES = 25 * 1024 * 1024
+PETDEX_SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+_CURL_LINE = re.compile(r"""curl\s[^\n]*-o\s+"\$PET_DIR/([A-Za-z0-9_.-]+)"\s+'([^']+)'""")
+
+
+class FetchError(Exception):
+    def __init__(self, code, message): super().__init__(message); self.code = code
+
+
+def _http_get(url, headers=None, limit=PETDEX_MAX_BYTES):
+    import urllib.request, urllib.error
+    req = urllib.request.Request(url, headers={"User-Agent": "desktop-widgets/petdex-fetch", "Referer": "https://petdex.dev/", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = r.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        raise FetchError(3 if e.code == 404 else 4, f"{'not on petdex' if e.code == 404 else 'network'}: HTTP {e.code} for {url}")
+    except Exception as e:
+        raise FetchError(4, f"network: {e}")
+    return data
+
+
+HTTP_GET = _http_get
+
+
+def _check_size(data):
+    if len(data) > PETDEX_MAX_BYTES: raise FetchError(5, f"file larger than {PETDEX_MAX_BYTES // (1024 * 1024)} MB")
+    return data
+
+
+def petdex_slug(text):
+    t = str(text or "").strip()
+    if not t: raise ValueError("no petdex URL or slug given")
+    if "://" in t or t.startswith(("petdex.dev/", "www.petdex.dev/")):
+        from urllib.parse import urlparse
+        u = urlparse(t if "://" in t else "https://" + t)
+        if u.scheme != "https" or u.netloc not in ("petdex.dev", "www.petdex.dev"): raise ValueError("not a petdex.dev https URL")
+        m = re.match(r"^/(?:[a-z]{2}/)?(?:pets|install)/([^/]+)/?$", u.path)
+        if not m: raise ValueError("not a petdex pet page (expected petdex.dev/pets/<slug>)")
+        t = m.group(1)
+    if not PETDEX_SLUG.match(t): raise ValueError(f"'{t}' is not a petdex slug (lowercase letters, digits, dashes)")
+    return t
+
+
+def parse_install_script(text):
+    files = {name: url for name, url in _CURL_LINE.findall(text)}
+    m = re.search(r"^DISPLAY_NAME='([^']*)'", text, re.M)
+    if "pet.json" not in files or "spritesheet.webp" not in files: raise ValueError("installer is missing the pet.json or spritesheet line")
+    for url in files.values():
+        if not url.startswith("https://assets.petdex.dev/"): raise ValueError(f"refusing asset host in {url}")
+    return {"petjson": files["pet.json"], "sheet": files["spritesheet.webp"], "displayName": m.group(1) if m else ""}
+
+
+def petdex_license(html):
+    t = str(html or "").upper().replace("‑", "-")
+    for lab in ("CC-BY-NC-SA", "CC-BY-NC", "CC-BY-SA", "CC-BY", "CC0"):
+        if lab in t or lab.replace("-", " ") in t: return lab
+    return "unknown"
+
+
+def fetch_pet(target, dest_root, http=None, force=False):
+    http = http or HTTP_GET
+    try: slug = petdex_slug(target)
+    except ValueError as e: raise FetchError(2, str(e))
+    page_url = f"https://petdex.dev/pets/{slug}"
+    script = http(f"https://petdex.dev/install/{slug}").decode("utf-8", "replace")
+    if "exit 1" in script and "curl" not in script: raise FetchError(3, f"'{slug}' is not on petdex")
+    try: manifest = parse_install_script(script)
+    except ValueError as e: raise FetchError(5, str(e))
+    meta_raw = _check_size(http(manifest["petjson"])); sheet_raw = _check_size(http(manifest["sheet"]))
+    try: meta = json.loads(meta_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError): raise FetchError(5, "pet.json is not JSON")
+    if not isinstance(meta, dict) or not meta.get("id"): raise FetchError(5, "pet.json has no id")
+    g = image_geometry(sheet_raw[:64])
+    if not g: raise FetchError(5, "sheet is not a PNG or WebP")
+    if g[1] != FRAME_W * COLS or g[2] % FRAME_H or not 8 <= g[2] // FRAME_H <= 11: raise FetchError(5, f"sheet is {g[1]}×{g[2]}, expected {FRAME_W * COLS}×(8..11×{FRAME_H})")
+    license_ = "unknown"
+    try: license_ = petdex_license(http(page_url, limit=2 * 1024 * 1024).decode("utf-8", "replace"))
+    except Exception: pass
+    dest = os.path.join(dest_root, slug)
+    if os.path.exists(dest) and not force: raise FetchError(6, f"{dest} exists (use --force to replace)")
+    os.makedirs(dest_root, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix=".fetch-", dir=dest_root)
+    try:
+        meta["displayName"] = meta.get("displayName") or manifest["displayName"] or slug
+        meta["spritesheetPath"] = "spritesheet.webp"
+        meta["source"] = {"site": "petdex", "url": page_url, "fetchedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), "license": license_}
+        with open(os.path.join(tmp, "pet.json"), "w") as fh: json.dump(meta, fh, indent=2); fh.write("\n")
+        with open(os.path.join(tmp, "spritesheet.webp"), "wb") as fh: fh.write(sheet_raw)
+        if os.path.exists(dest): shutil.rmtree(dest)
+        os.replace(tmp, dest)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True); raise
+    info = sheet_looks(os.path.join(dest, "spritesheet.webp")) or {"rows": g[2] // FRAME_H, "looks": []}
+    return {"slug": slug, "name": meta["displayName"], "path": dest, "sheet": os.path.join(dest, "spritesheet.webp"), "rows": info["rows"], "looks": info["looks"], "license": license_, "url": page_url}
 
 
 # ---------------------------------------------------------------- grid
@@ -1311,8 +1433,9 @@ def build_parser():
     ap = sub.add_parser("apps", help="desktop entries a dock can show (id + name); --all includes hidden ones"); ap.add_argument("--json", action="store_true"); ap.add_argument("--all", action="store_true"); ap.set_defaults(fn=cmd_apps)
     pt = sub.add_parser("pets", help="sprite sheets a pet widget can use (plugin examples, ~/.config/omarchy/desktop-widgets.pets, Hermes pets)"); pt.add_argument("--json", action="store_true")
     pt.add_argument("--looks", nargs="?", const="", metavar="SLUG", help="rows and frames per look (all pets, or one slug)"); pt.set_defaults(fn=cmd_pets)
-    pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable custom rows) | check [index] (validate rules) | fetch <petdex url or slug>")
-    pe.add_argument("op", choices=["expand", "check", "fetch"]); pe.add_argument("index", nargs="?", type=int); pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true")
+    pe = sub.add_parser("pet", help="pet helpers: expand <index> (preset rules → editable rows) | check [index] (validate rules) | fetch <petdex url or slug> [--add | --widget N] [--force]")
+    pe.add_argument("op", choices=["expand", "check", "fetch"]); pe.add_argument("target", nargs="?", help="widget index, or for fetch a petdex.dev URL / slug")
+    pe.add_argument("--json", action="store_true"); pe.add_argument("--force", action="store_true"); pe.add_argument("--add", action="store_true", help="fetch: append a pet widget using it"); pe.add_argument("--widget", type=int, metavar="N", help="fetch: point pet widget N at it")
     pe.set_defaults(fn=cmd_pet)
     gr = sub.add_parser("grid", help="arrange-mode grid snapping: no argument shows it; on | off | toggle | <size px>"); gr.add_argument("value", nargs="?"); gr.set_defaults(fn=cmd_grid)
     pr = sub.add_parser("preset", help="whole-screen layouts: list | show <name> | apply <name> | save <name> [--force] [--description ...] | remove <name>")

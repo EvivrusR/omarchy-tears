@@ -477,6 +477,104 @@ class Cli(unittest.TestCase):
         p = [x for x in json.loads(out)["pets"] if x["slug"] == "boba"][0]
         self.assertEqual(p["license"], "CC0"); self.assertEqual(p["source"], "petdex")
 
+    def test_pet_fetch_cli_add_and_widget(self):
+        fx = ROOT / "tests" / "fixtures" / "petdex"
+        pages = {"https://petdex.dev/install/boba": (fx / "install-curated.sh").read_bytes(), "https://petdex.dev/pets/boba": b"CC0",
+                 "https://assets.petdex.dev/curated/boba/petjson-v2.json": json.dumps({"id": "boba", "displayName": "Boba", "spritesheetPath": "spritesheet.webp"}).encode(),
+                 "https://assets.petdex.dev/curated/boba/sprite-v2.webp": _png(1536, 1872)}
+        old = dw.HTTP_GET; dw.HTTP_GET = lambda url, headers=None, limit=None: pages[url]
+        try:
+            code, out, err = self.run_cli("pet", "fetch", "https://petdex.dev/pets/boba", "--json", "--add")
+            self.assertEqual(code, 0, err); r = json.loads(out)
+            self.assertEqual(r["slug"], "boba"); self.assertTrue(r["path"].startswith(str(self.home)))
+            w = json.loads(self.cfg.read_text())["widgets"][-1]
+            self.assertEqual((w["type"], w["name"], w["sheet"]), ("pet", "boba", str(self.home / ".config" / "omarchy" / "desktop-widgets.pets" / "boba" / "spritesheet.webp")))
+            code, out, err = self.run_cli("pet", "fetch", "boba", "--force", "--widget", "0")
+            self.assertEqual(code, 2); self.assertIn("not a pet", err)                      # widget 0 is the clock
+            code, out, err = self.run_cli("pet", "fetch", "boba", "--force", "--widget", "2")
+            self.assertEqual(code, 0, err); w2 = json.loads(self.cfg.read_text())["widgets"][2]
+            self.assertEqual((w2["type"], w2["name"], w2["sheet"].endswith("boba/spritesheet.webp")), ("pet", "boba", True))
+            code, out, err = self.run_cli("pet", "fetch", "https://evil.dev/x")
+            self.assertEqual(code, 2); self.assertIn("petdex", err)
+        finally:
+            dw.HTTP_GET = old
+
+
+class Petdex(unittest.TestCase):
+    FX = ROOT / "tests" / "fixtures" / "petdex"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.root = pathlib.Path(self.tmp.name) / "pets"
+        self.sheet = _png(1536, 1872, blank_cells={(4, c) for c in range(8)})
+        self.pages = {
+            "https://petdex.dev/install/boba": (self.FX / "install-curated.sh").read_bytes(),
+            "https://petdex.dev/install/cat-sam": (self.FX / "install-community.sh").read_bytes(),
+            "https://petdex.dev/install/badhost": (self.FX / "install-badhost.sh").read_bytes(),
+            "https://petdex.dev/install/missing": (self.FX / "install-missing.sh").read_bytes(),
+            "https://petdex.dev/pets/boba": b"<html>... <span>CC0</span> ...</html>",
+            "https://petdex.dev/pets/cat-sam": b"<html>licensed CC-BY-NC by someone</html>",
+            "https://assets.petdex.dev/curated/boba/petjson-v2.json": json.dumps({"id": "boba", "displayName": "Boba", "description": "tea", "spritesheetPath": "spritesheet.webp"}).encode(),
+            "https://assets.petdex.dev/curated/boba/sprite-v2.webp": self.sheet,
+            "https://assets.petdex.dev/pets/cat-sam-9f3a1c/petjson.json": json.dumps({"id": "cat-sam", "displayName": "Cat Sam", "spritesheetPath": "spritesheet.webp"}).encode(),
+            "https://assets.petdex.dev/pets/cat-sam-9f3a1c/sprite.webp": _png(1536, 2288),
+        }
+        self.calls = []
+        def http(url, headers=None, limit=None):
+            self.calls.append(url)
+            if url == "https://petdex.dev/install/nope": raise dw.FetchError(3, "not on petdex")
+            if url not in self.pages: raise dw.FetchError(4, "network: " + url)
+            return self.pages[url]
+        self.http = http
+
+    def tearDown(self): self.tmp.cleanup()
+
+    def test_slug_normalisation(self):
+        for t in ("boba", "petdex.dev/pets/boba", "https://petdex.dev/pets/boba/", "https://petdex.dev/en/pets/boba", "https://petdex.dev/install/boba", "https://www.petdex.dev/pets/boba"):
+            self.assertEqual(dw.petdex_slug(t), "boba", t)
+        for bad in ("https://evil.dev/pets/boba", "http://petdex.dev/pets/boba", "petdex.dev/collections/x", "../boba", "Bo ba", "", "https://petdex.dev/pets/../etc"):
+            with self.assertRaises(ValueError, msg=bad): dw.petdex_slug(bad)
+
+    def test_parse_install_script(self):
+        m = dw.parse_install_script((self.FX / "install-curated.sh").read_text())
+        self.assertEqual(m, {"petjson": "https://assets.petdex.dev/curated/boba/petjson-v2.json", "sheet": "https://assets.petdex.dev/curated/boba/sprite-v2.webp", "displayName": "Boba"})
+        self.assertEqual(dw.parse_install_script((self.FX / "install-community.sh").read_text())["displayName"], "Cat Sam")
+        for f in ("install-badhost.sh", "install-missing.sh", "install-404.sh"):
+            with self.assertRaises(ValueError, msg=f): dw.parse_install_script((self.FX / f).read_text())
+        self.assertEqual(dw.petdex_license("<b>CC-BY-SA</b>"), "CC-BY-SA"); self.assertEqual(dw.petdex_license("cc0 1.0"), "CC0"); self.assertEqual(dw.petdex_license("nothing"), "unknown")
+
+    def test_fetch_curated_and_community(self):
+        r = dw.fetch_pet("https://petdex.dev/pets/boba", str(self.root), self.http)
+        self.assertEqual((r["slug"], r["name"], r["license"], r["rows"]), ("boba", "Boba", "CC0", 9))
+        self.assertEqual(r["path"], str(self.root / "boba")); self.assertTrue((self.root / "boba" / "spritesheet.webp").exists())
+        meta = json.loads((self.root / "boba" / "pet.json").read_text())
+        self.assertEqual(meta["source"]["site"], "petdex"); self.assertEqual(meta["source"]["url"], "https://petdex.dev/pets/boba"); self.assertEqual(meta["source"]["license"], "CC0"); self.assertIn("fetchedAt", meta["source"])
+        self.assertTrue(any(u.startswith("https://petdex.dev/pets/boba") for u in self.calls))
+        r2 = dw.fetch_pet("cat-sam", str(self.root), self.http)
+        self.assertEqual((r2["rows"], r2["license"]), (11, "CC-BY-NC")); self.assertIn("extra", " ".join(l["name"] for l in r2["looks"]))
+
+    def test_fetch_failures(self):
+        with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("https://evil.dev/pets/boba", str(self.root), self.http)
+        self.assertEqual(cm.exception.code, 2)
+        with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("nope", str(self.root), self.http)
+        self.assertEqual(cm.exception.code, 3)
+        with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("badhost", str(self.root), self.http)
+        self.assertEqual(cm.exception.code, 5)
+        with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("missing", str(self.root), self.http)
+        self.assertEqual(cm.exception.code, 5)
+        self.pages["https://assets.petdex.dev/curated/boba/sprite-v2.webp"] = _png(1000, 1000)
+        with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("boba", str(self.root), self.http)
+        self.assertEqual(cm.exception.code, 5); self.assertFalse((self.root / "boba").exists()); self.assertEqual([p for p in self.root.iterdir()] if self.root.exists() else [], [])
+        self.pages["https://assets.petdex.dev/curated/boba/sprite-v2.webp"] = self.sheet
+        dw.fetch_pet("boba", str(self.root), self.http)
+        with self.assertRaises(dw.FetchError) as cm: dw.fetch_pet("boba", str(self.root), self.http)
+        self.assertEqual(cm.exception.code, 6)
+        self.assertEqual(dw.fetch_pet("boba", str(self.root), self.http, force=True)["slug"], "boba")
+
+    def test_fetch_size_cap(self):
+        big = b"x" * (dw.PETDEX_MAX_BYTES + 1)
+        with self.assertRaises(dw.FetchError) as cm: dw._check_size(big)
+        self.assertEqual(cm.exception.code, 5)
+
 
 class PetRules(unittest.TestCase):
     RULES = ROOT / "tests" / "fixtures" / "rules"
