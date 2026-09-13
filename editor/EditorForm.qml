@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 import "../widgets/EditorModel.js" as Model
+import "../widgets/Pet.js" as Pet
 
 // The form for one entry, generated from the registry: common fields, then
 // a header with the type's display name, then the type's own fields.
@@ -10,6 +11,8 @@ Flickable {
   id: root
   property var entry: null
   property var registry: null
+  property var looks: null
+  property string publishedName: ""
   signal edited(string key, var value)
   contentHeight: column.implicitHeight
   contentWidth: width
@@ -50,6 +53,22 @@ Flickable {
           field: modelData
           value: Model.valueOf(root.entry, modelData.key, root.registry)
           onEdited: function(key, value) { root.edited(key, value) }
+        }
+        Text {
+          visible: modelData.key === "name" && root.publishedName !== "" && root.publishedName !== Pet.petName(root.entry)
+          Layout.fillWidth: true; Layout.leftMargin: Style.space(190) + Style.spacing.md
+          wrapMode: Text.WordWrap; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.caption
+          text: "another pet is already '" + Pet.petName(root.entry) + "' — this one publishes as pets." + root.publishedName + " (give it a name to pick your own)"
+        }
+        Text {
+          visible: modelData.key === "sheet" && root.entry && String(root.entry.type) === "pet"
+          Layout.fillWidth: true; Layout.leftMargin: Style.space(190) + Style.spacing.md
+          wrapMode: Text.WordWrap; color: Color.muted; font.family: Style.font.family; font.pixelSize: Style.font.caption
+          text: {
+            if (!root.looks) return "Looks: idle, running, waving, jumping, failed, waiting, review (contract; measured once the pet renders)"
+            var have = root.looks.filter(function(l) { return l.present })
+            return "Looks: " + have.map(function(l) { return l.name + " ×" + l.frames }).join(", ") + " (" + have.length + " of " + root.looks.length + ")"
+          }
         }
       }
     }

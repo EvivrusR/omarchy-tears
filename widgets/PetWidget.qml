@@ -20,7 +20,7 @@ WidgetCard {
   readonly property bool flip: config.flip === true
   readonly property int intervalSec: Math.max(2, parseInt(config.intervalSec) || 5)
   property var service: null                       // injected by the service: other pets' states live there
-  readonly property string petName: Pet.petName(config)
+  readonly property string petName: service && service.petNameFor(config.__index) ? service.petNameFor(config.__index) : Pet.petName(config)
   readonly property var layers: Pet.layerSpecs(listOf(config.layers))
   readonly property real cellScale: size / Pet.FRAME_H    // cell px → screen px
   function layerUrl(src) { var p = String(src).replace(/^~/, Quickshell.env("HOME")); return p.charAt(0) === "/" ? "file://" + p : p }
@@ -31,10 +31,12 @@ WidgetCard {
   property string say: ""
   property int sheetRows: 9
   property var counts: []
-  readonly property int row: Pet.rowFor(petState, sheetRows * Pet.FRAME_H, flip)
+  property var present: []
+  readonly property var looksList: Pet.looks(sheetRows * Pet.FRAME_H, { counts: counts, present: present })
+  readonly property int row: Pet.rowFor(petState, sheetRows * Pet.FRAME_H, flip, present.length ? present : null)
   readonly property int frames: counts[row] || Pet.FRAMES
 
-  function publish() { if (service) service.publishPet(petName, { state: petState, say: say, watch: watch }) }
+  function publish() { if (service) service.publishPet(petName, { state: petState, say: say, watch: watch, looks: looksList }) }
   function apply(text) {
     var s
     try { s = JSON.parse(text) } catch (e) { return }
@@ -71,7 +73,9 @@ WidgetCard {
         for (var i = 3; i < d.length; i += 4 * 5) if (d[i] > m) { m = d[i]; if (m > 8) break }
         alpha.push(m)
       }
-      root.counts = Pet.trimCounts(alpha, rows)
+      var info = Pet.trimInfo(alpha, rows)
+      root.counts = info.counts; root.present = info.present
+      root.publish()
       unloadImage(root.sheetUrl)
     }
   }
@@ -87,7 +91,7 @@ WidgetCard {
     property var spec: ({})
     property int index: -1
     readonly property bool isSheet: spec.kind === "sheet"
-    readonly property int lrow: isSheet ? Pet.rowFor(root.petState, root.sheetRows * Pet.FRAME_H, root.flip) : 0
+    readonly property int lrow: isSheet ? Pet.rowFor(root.petState, root.sheetRows * Pet.FRAME_H, root.flip, root.present.length ? root.present : null) : 0
     x: spec.x * root.cellScale - root.box.x; y: spec.y * root.cellScale - root.box.y
     width: isSheet ? root.bodyW : img.implicitWidth * root.cellScale * spec.scale
     height: isSheet ? root.size : img.implicitHeight * root.cellScale * spec.scale

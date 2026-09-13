@@ -6,6 +6,7 @@ import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "widgets/EditorModel.js" as Model
+import "widgets/Pet.js" as Pet
 import "editor"
 
 // Editor panel for desktop-widgets. Summoned by the shell
@@ -346,6 +347,8 @@ Item {
                 visible: root.doc.length > 0
                 entry: root.selectedEntry
                 registry: root.registry
+                looks: root.selectedEntry && String(root.selectedEntry.type) === "pet" && root.service && root.service.petStates[Pet.petName(root.selectedEntry)] ? (root.service.petStates[Pet.petName(root.selectedEntry)].looks || null) : null
+                publishedName: root.selected >= 0 ? (Pet.uniqueNames(root.doc)[root.selected] || "") : ""
                 onEdited: function(key, value) { root.setField(key, value) }
               }
               ColumnLayout {

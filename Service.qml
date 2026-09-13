@@ -6,6 +6,7 @@ import qs.Commons
 import "widgets/Jsonc.js" as Jsonc
 import "widgets/Registry.js" as Registry
 import "widgets/Arrange.js" as Arrange
+import "widgets/Pet.js" as Pet
 import "arrange"
 
 // Desktop widgets service. One PanelWindow per (widget entry × screen) on the
@@ -90,6 +91,9 @@ Item {
     next[String(name)] = info
     petStates = next
   }
+  // pets.<name> keys: a second pet on the same sheet folder publishes as name_2 (not over the first).
+  readonly property var petNames: Pet.uniqueNames(widgets)
+  function petNameFor(index) { var n = petNames[Number(index)]; return n || null }
 
   // Save a whole document through the CLI (validated, .bak kept). onDone(ok, message).
   property var saveCallback: null
