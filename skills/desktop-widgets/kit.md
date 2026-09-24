@@ -93,12 +93,14 @@ What `WidgetCard` gives you (read-only unless noted) — this table, the `Widget
 | `config` | the widget's JSON entry, registry defaults filled in; arrays may arrive as Qt lists — use `listOf(config.key)` |
 | `scale_` | `config.scale`, clamp ≥ 0.25; multiply every pixel size by it |
 | `textColor`, `mutedColor` | `color` / `mutedColor` resolved (token or colour string) |
-| `outlineColor`, `halo` | pass both to every `WidgetText` so text keeps its outline + halo |
+| `outlineColor`, `halo` | pass both to every `WidgetText` so text keeps its outline; the halo itself is drawn once for the whole card |
+| `groupHalo` (writable) | `true`: one halo pass over everything in the card. Set `false` when the content is not text (images, icons) and give the `WidgetText`s `ownHalo: true` |
 | `align` | `left`/`right`, derived from the corner unless `align` is set |
 | `resolveColor(value, fallback)` | token → theme colour, else `Qt.color`, else fallback |
 | `pad` (writable) | inner padding; `0` for pure-form widgets |
 | `topInset` (writable) | transparent room above the card inside the window (tooltips) |
-| `service` | declare `property var service: null` and the service injects itself (pet states, signals); only when you need it |
+| `service` | declare `property var service: null` and the service injects itself (pet states, `signals`, `sample` = the latest `bin/dw-sample` object from the shared stream — sample from it rather than starting your own process); only when you need it |
+| `behindWindows` | declare `property bool behindWindows: false` and the service keeps it true while a window is open on the widget's screen; stop animations then |
 
 Theme: `Color.foreground/background/accent/muted/urgent` are the active theme's tokens (`urgent` is
 red on most themes, not all — say "the theme's urgent colour" when the user asked for red), `Color.popups.*`; `Util.alpha(c, a)`;

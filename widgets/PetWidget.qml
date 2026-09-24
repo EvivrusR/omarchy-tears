@@ -6,10 +6,11 @@ import "Pet.js" as Pet
 
 // A pet: a Hermes/petdex sprite sheet (192×208 cells, 8 columns, one row per
 // state) driven by rules over signals from bin/dw-signals. The sheet carries
-// no logic; Pet.js decides the row, Qt's AnimatedSprite does the frames.
+// no logic; Pet.js decides the row, a timer steps the frames.
 WidgetCard {
   id: root
   pad: 0
+  groupHalo: false
   readonly property string sheetPath: String(config.sheet || "").replace(/^~/, Quickshell.env("HOME"))
   readonly property url sheetUrl: sheetPath ? "file://" + sheetPath : ""
   readonly property string watch: String(config.watch || "claude")
@@ -56,10 +57,12 @@ WidgetCard {
     command: [String(Qt.resolvedUrl("../bin/dw-signals")).replace(/^file:\/\//, "")]
     stdout: StdioCollector { onStreamFinished: root.apply(text) }
   }
-  Timer { interval: root.intervalSec * 1000; running: root.sheetPath !== "" && !root.service; repeat: true; triggeredOnStart: true; onTriggered: if (!ownSampler.running) ownSampler.running = true }
+  Timer { interval: root.intervalSec * 1000; running: root.standalone && root.sheetPath !== ""; repeat: true; triggeredOnStart: true; onTriggered: if (!ownSampler.running) ownSampler.running = true }
   // Re-evaluate when a beat ends so the pet doesn't linger until the next poll.
   Timer { id: beatEnd; repeat: false; onTriggered: if (root.engine) { root.engine = Pet.step(root.rules, root.engine.signals, root.engine, Date.now()); root.petState = root.engine.state; root.say = root.engine.say; root.publish() } }
-  Component.onCompleted: { publish(); if (service && service.signals) applySignals(service.signals) }
+  property bool standalone: false   // decided after the Loader has had its chance to inject the service
+  Component.onCompleted: Qt.callLater(function() { root.standalone = !root.service })
+  onServiceChanged: { publish(); if (service && service.signals) applySignals(service.signals) }
 
   // Sheet geometry + padding trim (Hermes rule: a cell whose max alpha ≤ 8 is
   // blank padding). Done once through a hidden canvas, then released.
@@ -92,22 +95,56 @@ WidgetCard {
   readonly property var box: Pet.bounds(layers, bodyW, size, cellScale, layerSizes)
 
   // A layer: a static prop, or a sheet clipped to the body's current row and frame.
+  // Frames step on our own timer at `fps`. (AnimatedSprite repaints its window
+  // on every vsync while running, whatever frameDuration says — a 60 Hz
+  // surface on the Bottom layer, which on an iGPU costs more than every other
+  // widget together.) Only the offset of an already-uploaded sheet changes.
+  property int frame: 0
+  // Set by the service: a window is open on this screen's workspace. The pet
+  // holds its frame there (its rules still run) unless pauseBehindWindows is off.
+  property bool behindWindows: false
+  readonly property bool paused: behindWindows && config.pauseBehindWindows !== false
+  onRowChanged: frame = 0
+  onFramesChanged: frame = 0
+  Timer {
+    interval: Math.round(1000 / root.fps); repeat: true
+    running: root.sheetPath !== "" && root.frames > 1 && root.visible && !root.paused
+    onTriggered: root.frame = (root.frame + 1) % root.frames
+  }
+
+  // One cell of a sheet: the whole sheet as a single texture, clipped and
+  // offset to the current row and frame.
+  component SheetView: Item {
+    property url source
+    property int frameRow: 0
+    width: root.bodyW; height: root.size
+    clip: true
+    Image {
+      source: parent.source
+      x: -root.frame * Pet.FRAME_W * root.cellScale
+      y: -parent.frameRow * Pet.FRAME_H * root.cellScale
+      width: implicitWidth * root.cellScale; height: implicitHeight * root.cellScale
+      smooth: true; mipmap: true; asynchronous: true
+    }
+    transform: Scale { xScale: root.flip ? -1 : 1; origin.x: root.bodyW / 2 }
+  }
+
+  // A layer: a static prop, or a sheet shown at the body's current row and frame.
   component Layer: Item {
     property var spec: ({})
     property int index: -1
     readonly property bool isSheet: spec.kind === "sheet"
-    readonly property int lrow: isSheet ? Pet.rowFor(root.petState, root.sheetRows * Pet.FRAME_H, root.flip, root.present.length ? root.present : null) : 0
     x: spec.x * root.cellScale - root.box.x; y: spec.y * root.cellScale - root.box.y
     width: isSheet ? root.bodyW : img.implicitWidth * root.cellScale * spec.scale
     height: isSheet ? root.size : img.implicitHeight * root.cellScale * spec.scale
+    SheetView { visible: parent.isSheet; source: parent.isSheet ? root.layerUrl(parent.spec.source) : ""; frameRow: root.row }
     Image {
       id: img
       anchors.fill: parent
-      source: root.layerUrl(spec.source)
+      visible: !parent.isSheet
+      source: parent.isSheet ? "" : root.layerUrl(spec.source)
       onStatusChanged: if (status === Image.Ready && !parent.isSheet) { var n = ({}); for (var k in root.layerSizes) n[k] = root.layerSizes[k]; n[parent.index] = { w: implicitWidth, h: implicitHeight }; root.layerSizes = n }
-      sourceClipRect: parent.isSheet ? Qt.rect(sprite.currentFrame * Pet.FRAME_W, parent.lrow * Pet.FRAME_H, Pet.FRAME_W, Pet.FRAME_H) : undefined
       fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true; asynchronous: true
-      transform: Scale { xScale: root.flip && parent.isSheet ? -1 : 1; origin.x: img.width / 2 }
     }
   }
 
@@ -116,27 +153,13 @@ WidgetCard {
     height: root.box.h
     visible: root.sheetPath !== ""
     Repeater { model: root.layers.map(function(l, i) { return { spec: l, i: i } }).filter(function(e) { return !e.spec.front }); Layer { required property var modelData; spec: modelData.spec; index: modelData.i } }
-    AnimatedSprite {
-      id: sprite
-      x: -root.box.x; y: -root.box.y
-      width: root.bodyW; height: root.size
-      source: root.sheetUrl
-      frameWidth: Pet.FRAME_W; frameHeight: Pet.FRAME_H
-      frameX: 0; frameY: root.row * Pet.FRAME_H
-      frameCount: root.frames
-      frameDuration: Math.round(1000 / root.fps)
-      interpolate: false
-      running: true; loops: AnimatedSprite.Infinite
-      transform: Scale { xScale: root.flip ? -1 : 1; origin.x: sprite.width / 2 }
-      onFrameYChanged: restart()
-      onFrameCountChanged: restart()
-    }
+    SheetView { x: -root.box.x; y: -root.box.y; source: root.sheetUrl; frameRow: root.row }
     Repeater { model: root.layers.map(function(l, i) { return { spec: l, i: i } }).filter(function(e) { return e.spec.front }); Layer { required property var modelData; spec: modelData.spec; index: modelData.i } }
   }
   WidgetText {
     visible: root.sheetPath === ""
     width: visible ? implicitWidth : 0; height: visible ? implicitHeight : 0   // hidden items still count in childrenRect
-    outlineColor: root.outlineColor; halo: root.halo
+    ownHalo: true; outlineColor: root.outlineColor; halo: root.halo
     text: "pet: no sheet — `desktop-widgets pets` lists sprite sheets"; color: root.mutedColor
     font.family: Style.font.resolvedFamily; font.pixelSize: Math.round(Style.font.caption * root.scale_)
   }

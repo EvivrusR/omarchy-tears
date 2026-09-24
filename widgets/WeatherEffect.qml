@@ -23,6 +23,11 @@ Item {
     var c = Qt.color(v); return c.valid === false ? Color.foreground : c
   }
 
+  // Set by the service: a window is open on this screen's workspace; the effect
+  // holds its frame there unless pauseBehindWindows is off.
+  property bool behindWindows: false
+  readonly property bool paused: behindWindows && config.pauseBehindWindows !== false
+
   property var data: ({})
   readonly property var effect: data.current ? Weather.effectFor(data.current.group, data.current.isDay, data.current.wind) : Weather.EFFECTS.none
   readonly property real alpha: userOpacity * (effect.opacity || 0)
@@ -61,7 +66,7 @@ Item {
     stdout: StdioCollector { onStreamFinished: { try { fx.data = JSON.parse(text) } catch (e) { fx.data = {} } } }
   }
   Timer { interval: fx.refreshMin * 60000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!fetcher.running) fetcher.running = true }
-  Timer { interval: Math.round(1000 / fx.fps); running: fx.moving && fx.alpha > 0 && fx.visible; repeat: true; onTriggered: fx.frame() }
+  Timer { interval: Math.round(1000 / fx.fps); running: fx.moving && fx.alpha > 0 && fx.visible && !fx.paused; repeat: true; onTriggered: fx.frame() }
 
   Text {
     id: field

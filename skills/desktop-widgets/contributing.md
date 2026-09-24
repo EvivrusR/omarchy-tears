@@ -11,8 +11,10 @@ what you leave on disk is what the shell runs after the next restart.
    must not ride along. (`~/.claude/skills/desktop-widgets` is a symlink into this repo's `skills/`, so editing
    the skill is editing the repo.) Then `git checkout -b feat/<name>` from `master`. `master` is what `omarchy plugin update`
    pulls on other machines, so it must always run. Merge `--no-ff` when done; releases bump
-   `manifest.json` version + `CHANGELOG.md` and tag `vX.Y.Z`. Push every remote the repo has
-   (`git remote -v`; today `github` = source of record, `origin` = Forge mirror).
+   `manifest.json` version + `CHANGELOG.md` and tag `vX.Y.Z`. Push branches and master to `origin`
+   (Forge, the working remote). **Never push a branch or master to `github`**: GitHub is releases-only,
+   one squashed commit per tag on the local `public` branch, published by the release procedure in the
+   maintainer's notes (commit-tree of the tag's tree onto `public`, force-push `public:master` + the tag).
 2. **Registry first.** A new key or type starts in `widgets/registry.json` (`common` for keys on every
    type, `types.<name>.fields` otherwise; `rowFields` hints for `rows` fields). The CLI validator,
    the service's defaults and the editor's form all read it — add it there and they follow. QML then

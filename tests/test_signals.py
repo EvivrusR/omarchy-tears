@@ -17,6 +17,22 @@ class Signals(unittest.TestCase):
         self.assertEqual(G.count_agents("bash\nclaude\n/usr/bin/codex\nclaude\nhermes\nvim\n"), 4)
         self.assertEqual(G.count_agents(""), 0)
 
+    def test_count_agents_proc(self):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as d:
+            for pid, comm in (("1", "systemd"), ("20", "claude"), ("21", "codex"), ("22", "claude-helper"), ("self", "claude")):
+                os.makedirs(os.path.join(d, pid)); open(os.path.join(d, pid, "comm"), "w").write(comm + "\n")
+            os.makedirs(os.path.join(d, "30"))                       # process gone mid-scan: no comm
+            self.assertEqual(G.count_agents_proc(d), 2)
+
+    def test_build_from_sample(self):
+        s = {"cpu": {"pct": 12.5}, "mem": {"pct": 40.0}, "gpu": None, "load": [0.5, 0, 0], "temp": {"c": 55.0}, "battery": {"pct": 80, "status": "Charging"}}
+        out = G.build(s, "claude", [])
+        self.assertEqual((out["cpu"], out["mem"], out["gpu"], out["load"], out["temp"]), (12.5, 40.0, None, 0.5, 55.0))
+        self.assertEqual(out["battery"], {"pct": 80, "status": "Charging", "charging": True, "discharging": False, "full": False})
+        self.assertNotIn("custom", out)
+        self.assertIsNone(G.build(None)["cpu"])
+
     def test_live_shape(self):
         out = json.loads(subprocess.run([sys.executable, str(ROOT / "bin" / "dw-signals")], capture_output=True, text=True, timeout=10).stdout)
         for k in ("t", "claude", "battery", "agents", "cpu", "mem", "gpu", "hour"): self.assertIn(k, out)

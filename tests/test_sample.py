@@ -22,6 +22,13 @@ class Sample(unittest.TestCase):
         self.assertIsNone(S.net_counters(dev, "eth9"))
         self.assertEqual(S.default_iface("default via 192.168.1.1 dev wlp0s20f3 proto dhcp src 1.2.3.4 metric 600\n"), "wlp0s20f3")
         self.assertIsNone(S.default_iface(""))
+        route = ("Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\n"
+                 "wlp0s20f3\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\n"
+                 "enp1s0\t00000000\t0101A8C0\t0003\t0\t0\t100\t00000000\n"
+                 "tun0\t00000000\t00000000\t0000\t0\t0\t1\t00000000\n"
+                 "wlp0s20f3\t0001A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\n")
+        self.assertEqual(S.default_iface_proc(route), "enp1s0")          # lowest metric, down routes skipped
+        self.assertIsNone(S.default_iface_proc("Iface\tDestination\n")); self.assertIsNone(S.default_iface_proc(""))
 
     def test_battery(self):
         b = S.battery_from({"capacity": "38\n", "status": "Discharging\n", "current_now": "1000000", "voltage_now": "12000000", "charge_now": "2000000", "charge_full": "4000000"})
@@ -41,6 +48,36 @@ class Sample(unittest.TestCase):
         out = json.loads(subprocess.run([sys.executable, str(ROOT / "bin" / "dw-sample")], capture_output=True, text=True, timeout=10).stdout)
         for k in ("t", "cpu", "mem", "load", "temp", "net", "battery", "gpu"): self.assertIn(k, out)
         self.assertTrue(0 <= out["cpu"]["pct"] <= 100); self.assertTrue(out["mem"]["total"] > 0)
+
+
+    def test_sample_with_prev_does_not_sleep(self):
+        import time
+        first = S.sample(cpu_pause=0.05)
+        self.assertIn("cpu_times", first)
+        t0 = time.monotonic(); second = S.sample(cpu_pause=5, prev_cpu=first["cpu_times"], ifaces=["lo"])
+        self.assertLess(time.monotonic() - t0, 2)
+        self.assertEqual(second["nets"]["lo"]["iface"], "lo")
+
+
+class Stream(unittest.TestCase):
+    def test_stream_lines(self):
+        r = subprocess.run([sys.executable, str(ROOT / "bin" / "dw-stream"), "--interval", "1", "--count", "2", "--signals", "--iface", "lo", "--command", "x=echo 7"],
+                           capture_output=True, text=True, timeout=20)
+        lines = [json.loads(l) for l in r.stdout.splitlines()]
+        self.assertEqual(len(lines), 2)
+        for d in lines:
+            for k in ("t", "cpu", "mem", "net", "battery", "gpu"): self.assertIn(k, d["sample"])
+            self.assertNotIn("cpu_times", d["sample"]); self.assertIn("lo", d["sample"]["nets"])
+            self.assertEqual(d["signals"]["custom"]["x"], 7); self.assertIn("active", d["signals"]["agents"])
+        self.assertTrue(0 <= lines[1]["sample"]["cpu"]["pct"] <= 100)
+        self.assertGreaterEqual(lines[1]["sample"]["t"] - lines[0]["sample"]["t"], 0.8)
+        plain = subprocess.run([sys.executable, str(ROOT / "bin" / "dw-stream"), "--interval", "1", "--count", "1"], capture_output=True, text=True, timeout=10)
+        self.assertNotIn("signals", json.loads(plain.stdout))
+
+    def test_parse_args(self):
+        T = load("dw-stream")
+        o = T.parse_args(["--interval", "0.2", "--iface", "a", "--iface", "b", "--signals", "--agent", "codex", "--command", "k=v", "--bogus", "--count", "3"])
+        self.assertEqual((o["interval"], o["ifaces"], o["signals"], o["agent"], o["commands"], o["count"]), (1.0, ["a", "b"], True, "codex", ["k=v"], 3))
 
 
 class Sysinfo(unittest.TestCase):

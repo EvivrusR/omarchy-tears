@@ -7,6 +7,7 @@ import qs.Commons
 WidgetCard {
   id: root
   pad: 0
+  groupHalo: false
   readonly property string kind: String(config.kind || "rect")
   readonly property int w: Math.max(1, Math.round(Number(config.width || 320) * scale_))
   readonly property int h: kind === "circle" ? w : Math.max(1, Math.round(Number(config.height || 200) * scale_))

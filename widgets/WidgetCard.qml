@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import qs.Commons
 
 // Frame shared by every widget: optional themed backdrop, padding, scale.
@@ -45,6 +46,9 @@ Item {
   // Outline + halo behind all text. `"outline": ""` turns it off.
   readonly property color outlineColor: config.outline === undefined ? Qt.color("#000000") : resolveColor(config.outline, "transparent")
   readonly property real halo: config.halo === undefined ? 0.7 : Math.max(0, Math.min(1, Number(config.halo)))
+  // The halo is one shadow pass over everything in the card. Cards whose content
+  // is not text (shape, pet, dock icons) turn it off and let their text use ownHalo.
+  property bool groupHalo: true
 
   implicitWidth: inner.implicitWidth + 2 * pad
   implicitHeight: inner.implicitHeight + 2 * pad + topInset
@@ -65,5 +69,18 @@ Item {
     y: card.pad + card.topInset
     implicitWidth: childrenRect.width
     implicitHeight: childrenRect.height
+    layer.enabled: card.groupHalo && card.outlineColor.a > 0 && card.halo > 0
+    layer.effect: MultiEffect {
+      shadowEnabled: true
+      shadowColor: card.outlineColor
+      // Tuned by eye against the old per-text halo, which scaled each line's
+      // shadow by 4% and so read darker at the same opacity.
+      shadowOpacity: Math.min(1, card.halo * 1.5)
+      shadowBlur: 0.6
+      blurMax: 18
+      shadowHorizontalOffset: 0
+      shadowVerticalOffset: 0
+      autoPaddingEnabled: true
+    }
   }
 }

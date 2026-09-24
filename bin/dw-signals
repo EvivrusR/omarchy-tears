@@ -41,6 +41,18 @@ def count_agents(ps_text):
     return sum(1 for line in ps_text.splitlines() if line.strip().split("/")[-1] in names)
 
 
+def count_agents_proc(proc="/proc"):
+    """Same count as count_agents, read from /proc/*/comm instead of running ps."""
+    names = ("claude", "codex", "hermes"); n = 0
+    for pid in os.listdir(proc):
+        if not pid.isdigit(): continue
+        try:
+            with open(os.path.join(proc, pid, "comm")) as fh:
+                if fh.read().strip() in names: n += 1
+        except OSError: pass
+    return n
+
+
 def custom_signals(specs, timeout=2.0):
     """['key=shell command', ...] -> {key: number|text|None}; each command runs in a shell with a timeout."""
     out = {}
@@ -64,33 +76,43 @@ def custom_signals(specs, timeout=2.0):
     return out
 
 
-def main(argv):
+def parse_args(argv):
     agent, commands, i = "claude", [], 0
     while i < len(argv):
         if argv[i] == "--agent" and i + 1 < len(argv): agent = argv[i + 1]; i += 2
         elif argv[i] == "--command" and i + 1 < len(argv): commands.append(argv[i + 1]); i += 2
         else: i += 1
+    return agent, commands
+
+
+def build(s, agent="claude", commands=()):
+    """Signals object from a dw-sample sample `s` (None = system fields stay null)."""
     out = {"t": time.time(), "claude": parse_usage(None), "battery": None, "agents": {"active": 0}, "cpu": None, "mem": None, "gpu": None, "load": None, "temp": None, "hour": datetime.datetime.now().hour}
     try:
         p = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state"), "omarchy", "agents", "usage", agent + ".json")
         with open(p) as fh: out["claude"] = parse_usage(json.load(fh))
     except Exception: pass
-    try:
-        r = subprocess.run(["ps", "-eo", "comm="], capture_output=True, text=True, timeout=2)
-        out["agents"] = {"active": count_agents(r.stdout)}
+    try: out["agents"] = {"active": count_agents_proc()}
     except Exception: pass
     try:
-        s = _load_sample().sample(cpu_pause=0.15)
-        out["cpu"] = s["cpu"]["pct"] if s.get("cpu") else None
-        out["mem"] = s["mem"]["pct"] if s.get("mem") else None
-        out["gpu"] = s["gpu"]["pct"] if s.get("gpu") else None
-        out["load"] = s["load"][0] if s.get("load") else None
-        out["temp"] = s["temp"]["c"] if s.get("temp") else None
-        b = s.get("battery")
-        if b: out["battery"] = {"pct": b["pct"], "status": b["status"], "charging": b["status"] == "Charging", "discharging": b["status"] == "Discharging", "full": b["status"] == "Full"}
+        if s:
+            out["cpu"] = s["cpu"]["pct"] if s.get("cpu") else None
+            out["mem"] = s["mem"]["pct"] if s.get("mem") else None
+            out["gpu"] = s["gpu"]["pct"] if s.get("gpu") else None
+            out["load"] = s["load"][0] if s.get("load") else None
+            out["temp"] = s["temp"]["c"] if s.get("temp") else None
+            b = s.get("battery")
+            if b: out["battery"] = {"pct": b["pct"], "status": b["status"], "charging": b["status"] == "Charging", "discharging": b["status"] == "Discharging", "full": b["status"] == "Full"}
     except Exception: pass
     if commands: out["custom"] = custom_signals(commands)
-    print(json.dumps(out)); return 0
+    return out
+
+
+def main(argv):
+    agent, commands = parse_args(argv)
+    try: s = _load_sample().sample(cpu_pause=0.15)
+    except Exception: s = None
+    print(json.dumps(build(s, agent, commands))); return 0
 
 
 if __name__ == "__main__":

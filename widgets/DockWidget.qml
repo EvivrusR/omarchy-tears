@@ -9,6 +9,7 @@ import qs.Commons
 // widget's text colour by default so any icon set matches the theme.
 WidgetCard {
   id: root
+  groupHalo: false   // icons keep their own look; the labels draw their own halo
   readonly property var apps: listOf(config.apps) || []
   readonly property int iconSize: Math.round(Number(config.iconSize || 32) * scale_)
   readonly property int gap: Math.round(Number(config.spacing !== undefined ? config.spacing : 8) * scale_)
@@ -33,7 +34,7 @@ WidgetCard {
     spacing: root.gap
     WidgetText {
       visible: root.apps.length === 0
-      outlineColor: root.outlineColor; halo: root.halo
+      ownHalo: true; outlineColor: root.outlineColor; halo: root.halo
       text: "dock: no apps — `desktop-widgets apps` lists ids"; color: root.mutedColor
       font.family: Style.font.resolvedFamily; font.pixelSize: Math.round(Style.font.caption * root.scale_)
     }
@@ -83,7 +84,7 @@ WidgetCard {
         WidgetText {
           visible: root.labels
           anchors.horizontalCenter: parent.horizontalCenter
-          outlineColor: root.outlineColor; halo: root.halo
+          ownHalo: true; outlineColor: root.outlineColor; halo: root.halo
           text: cell.appName; color: root.mutedColor
           font.family: Style.font.resolvedFamily; font.pixelSize: Math.round(Style.font.caption * root.scale_)
           width: Math.min(implicitWidth, root.iconSize * 2); elide: Text.ElideRight; horizontalAlignment: Text.AlignHCenter

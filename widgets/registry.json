@@ -837,6 +837,13 @@
           "type": "color",
           "label": "Effect colour",
           "default": "foreground"
+        },
+        {
+          "key": "pauseBehindWindows",
+          "type": "boolean",
+          "label": "Pause effect behind windows",
+          "default": true,
+          "description": "holds the effect's frame while a window is open on this screen's workspace"
         }
       ]
     },
@@ -1023,6 +1030,13 @@
           "type": "boolean",
           "label": "Face left",
           "default": false
+        },
+        {
+          "key": "pauseBehindWindows",
+          "type": "boolean",
+          "label": "Pause behind windows",
+          "default": true,
+          "description": "holds the frame while a window is open on this screen's workspace (rules keep running)"
         },
         {
           "key": "intervalSec",

@@ -27,7 +27,13 @@ WidgetCard {
     command: [String(Qt.resolvedUrl("../bin/dw-sample")).replace(/^file:\/\//, "")]
     stdout: StdioCollector { onStreamFinished: { try { root.batt = JSON.parse(text).battery } catch (e) { root.batt = null } root.sampled = true } }
   }
-  Timer { interval: root.intervalSec * 1000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!sampler.running) sampler.running = true }
+  property var service: null        // injected: its shared stream replaces our own sampler
+  // Decided after the Loader has had its chance to inject the service (it does so after completion).
+  property bool standalone: false
+  Component.onCompleted: Qt.callLater(function() { root.standalone = !root.service })
+  Connections { target: root.service; function onSampleChanged() { root.batt = root.service.sample ? root.service.sample.battery : null; root.sampled = true } }
+  onServiceChanged: if (service && service.sample) { batt = service.sample.battery; sampled = true }
+  Timer { interval: root.intervalSec * 1000; running: root.standalone; repeat: true; triggeredOnStart: true; onTriggered: if (!sampler.running) sampler.running = true }
 
   Row {
     spacing: Math.round(Style.space(10) * root.scale_)

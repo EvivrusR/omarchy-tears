@@ -79,7 +79,7 @@ Keys every widget accepts:
 | `color` | `foreground` | text colour: theme token (`foreground`, `background`, `accent`, `muted`, `urgent`) or any colour string |
 | `mutedColor` | `muted` | secondary text colour, same forms |
 | `outline` | `#000000` | crisp outline around all text, theme token or colour; `""` disables outline and halo |
-| `halo` | 0.7 | strength (0..1) of the soft dark halo behind text, uses the outline colour |
+| `halo` | 0.7 | strength (0..1) of the soft dark halo behind the widget's text (one shadow pass per widget), uses the outline colour |
 | `align` | by corner | `left` or `right` text alignment |
 
 Per type:
@@ -98,7 +98,8 @@ Per type:
   `omarchy-agent-usage-update --limits-only` itself.
 - **battery**: glyph (`style`: `outline` icon-font battery, `pixel` `[████░]`, or `text`), percent, and time to
   empty or full from the battery's own power draw (`showPercent`, `showTime`, `warnAt` 20 turns it red,
-  `intervalSec` 30). Hidden when the machine has no battery.
+  `intervalSec` 30). Hidden when the machine has no battery. Monitors, batteries and pets all read one shared,
+  long-running sampler (`bin/dw-stream`) that ticks at the fastest interval any of them asks for.
 - **sysinfo**: a fastfetch-style block — logo or your own ASCII art beside a key/value table. `logo` is a
   dropdown of common fastfetch logos (`omarchy` default, `arch`, `linux`, `debian`, `ubuntu`, `fedora`, `nixos`, …),
   `none`, or `custom`, which reveals `logoName` (any name from `fastfetch --list-logos`), `art` (paste your own
@@ -121,7 +122,8 @@ Per type:
   `effectPlacement`: `back` (default, behind every widget), `front` (above them all), or `custom` (uses the
   widget's `z`, shown in the editor only then; the effect sits just above its own widget at equal z).
   `effectOpacity` 0.4 (multiplied by each effect's own preset opacity, so rain is never a wall), `effectDensity` 1,
-  `effectFps` 6, `effectColor` (`foreground`). The animation timer only runs while something moves.
+  `effectFps` 6, `effectColor` (`foreground`), `pauseBehindWindows` (on). The animation timer only runs while
+  something moves and, unless you turn that off, no window is open on the screen's workspace.
 - **dock**: a row of app icons that launch on click — the one widget that takes pointer input. It lives on the
   wallpaper like everything else, so it is clickable wherever no window covers it and never reserves space.
   `apps` (desktop-entry ids in order; `desktop-widgets apps` lists them, the editor has a searchable picker fed by
@@ -138,7 +140,8 @@ Per type:
   `watch` picks a ready-made rule set: `claude` (session %, agents at work, reset), `battery`, `agents`, `cpu`,
   `mem`, `gpu`, or `custom` with your own `rules` (rows of `when`/`on`: a test over the signals, the state to
   show, an optional `beat` in seconds for `on`, and a `say` bubble text with `{signal}` placeholders). Add one
-  pet per thing you care about. `size` (96 px, any value), `fps` 6, `bubble`, `flip`, `intervalSec` 5. The
+  pet per thing you care about. `size` (96 px, any value), `fps` 6, `bubble`, `flip`, `intervalSec` 5, `pauseBehindWindows` (on: the
+  pet holds its frame while a window is open on that screen's workspace; its rules keep running). The
   sprite carries no logic; the rules do, and a blank trailing frame in a row is trimmed the way Hermes does.
   **Layers**: `layers` rows add props and outfits drawn with the body — `image` (a static PNG/SVG such as
   the shipped `examples/pets/props/rug.png` and `stool.png`; `z` back/front, `x`/`y` offset in cell px, `scale`)
@@ -162,7 +165,7 @@ Per type:
   `desktop-widgets pet expand N`) copies the preset you were watching into editable rows. `desktop-widgets pet
   check` lists rule problems; the editor shows them under the rows. Extra text/number signals: `signals` rows
   (`{"kind": "command", "key": "window", "command": "hyprctl activewindow -j | jq -r .title"}`) become
-  `custom.<key>` — e.g. the focused window title for a keyword rule. One `dw-signals`
+  `custom.<key>` — e.g. the focused window title for a keyword rule. The shared
   sampler serves every pet. Rules that read another pet see its latest published state, at most one tick old, so
   a chain of three pets reacts across three intervals. Two pets on the same sheet folder publish as `teto` and
   `teto_2` (set `name` to choose).
@@ -463,7 +466,7 @@ because the shell's environment need not include `~/.local/bin`.
 
 ## Developing
 
-Work happens on branches (`feat/<name>`), merged to `master` when ready; `master` is what `omarchy plugin update` pulls, so it must always run. Push both remotes: `git push origin <branch> && git push github <branch>`.
+Work happens on branches (`feat/<name>`), merged to `master` when ready; `master` is what `omarchy plugin update` pulls, so it must always run. Development history (branches, merges) lives on the Forge remote (`origin`); GitHub carries releases only — one commit per version, tagged — and is rewritten from the release tags, so clone GitHub to *use* the plugin and Forge to *work on* it.
 
 Code lives in the plugin directory as a git checkout. Config changes hot-reload.
 **Code** changes need `omarchy restart shell`: the shell's plugin reload only

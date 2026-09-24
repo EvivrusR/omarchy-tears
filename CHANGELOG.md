@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1 — 2026-09-24
+- **Performance on integrated graphics** (measured on a Comet Lake UHD laptop: GPU busy 78% → indistinguishable from the plugin being off while windows cover the desktop):
+  - Pets step frames on a timer at `fps` instead of `AnimatedSprite`, which repainted the window at the display's refresh rate whatever `fps` said; sheet layers no longer re-decode the file every frame.
+  - `pauseBehindWindows` (pet, weather effect; on by default): animation holds while a window is open on that screen's workspace.
+  - One halo pass per widget instead of one offscreen layer (4× multisampled) per line of text. `WidgetCard.groupHalo` / `WidgetText.ownHalo` for content that is not text (shape, pet, dock turn it off).
+  - One shared, long-running sampler (`bin/dw-stream`) for monitors, batteries and pets instead of a Python start per widget per tick; the default route is read from `/proc/net/route` and agents from `/proc` (no `ip`/`ps` processes), and `nvidia-smi` only runs when the NVIDIA driver is loaded. Service exposes `sample`; IPC `state` reports `covered` and the stream's arguments.
+
 ## 0.8.0 — 2026-09-13
 - **Kit api + `requires`**: `widgets/registry.json` carries `"api": 1`, the version of what a drop-in may rely on (kit properties/functions, import path, field types, injected `config`/`service`); `types` prints `kit api 1`, `status` an `api:` row. A drop-in's `type.json` may pin `"requires": {"api": 1}`; a mismatch warns in `types`/`validate`/`registry` and the journal, and the drop-in still loads. Contract fixture `tests/fixtures/kit/api-1.json` checked by both suites (plus a Qt6 `qmllint` syntax pass over every shipped QML file when installed), so a core change that breaks the surface fails a test unless `api` is bumped.
 - **Sharing drop-ins**: `desktop-widgets ext add <git url> [name]` clones a drop-in repo into `desktop-widgets.d/<name>/` and validates it; `ext update [name]` pulls `--ff-only` and says when a shell restart is needed; `ext list` shows name/api/origin/commit/in-use; `ext remove <name>` refuses while widgets use the type, `--force` removes them first through the one writer.

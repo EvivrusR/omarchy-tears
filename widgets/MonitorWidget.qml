@@ -3,6 +3,7 @@ import Quickshell.Io
 import qs.Commons
 import "Series.js" as Series
 import "Monitor.js" as Monitor
+import "Stream.js" as Stream
 
 // Stats v2: chosen rows sampled every intervalSec, kept for windowSec, drawn
 // as sparklines (filled), bars, or numbers only.
@@ -30,9 +31,16 @@ WidgetCard {
     if (!series[key] || series[key].windowSec !== windowSec) series[key] = Series.create(windowSec)
     return series[key]
   }
-  function ingest(text) {
-    var s
-    try { s = JSON.parse(text) } catch (e) { return }
+  property var service: null        // injected: its shared stream replaces our own sampler
+  // Decided after the Loader has had its chance to inject the service (it does so after completion).
+  property bool standalone: false
+  Component.onCompleted: Qt.callLater(function() { root.standalone = !root.service })
+  property double lastT: 0
+  function ingestText(text) { try { ingest(JSON.parse(text)) } catch (e) {} }
+  function ingest(s) {
+    if (!s) return
+    if (iface !== "" && s.nets) { var c = ({}); for (var k in s) c[k] = s[k]; c.net = s.nets[iface] || null; s = c }
+    lastT = s.t
     rate = Monitor.netRate(prev, s)
     prev = sample; sample = s
     for (var i = 0; i < rowKeys.length; i++) {
@@ -50,9 +58,14 @@ WidgetCard {
       if (root.iface !== "") c = c.concat(["--iface", root.iface])
       return c
     }
-    stdout: StdioCollector { onStreamFinished: root.ingest(text) }
+    stdout: StdioCollector { onStreamFinished: root.ingestText(text) }
   }
-  Timer { interval: root.intervalSec * 1000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!sampler.running) sampler.running = true }
+  Connections {
+    target: root.service
+    function onSampleChanged() { var s = root.service.sample; if (s && Stream.due(root.lastT, s.t, root.intervalSec, root.service.streamInterval)) root.ingest(s) }
+  }
+  onServiceChanged: if (service && service.sample) ingest(service.sample)
+  Timer { interval: root.intervalSec * 1000; running: root.standalone; repeat: true; triggeredOnStart: true; onTriggered: if (!sampler.running) sampler.running = true }
 
   Column {
     spacing: Math.round(Style.space(6) * root.scale_)

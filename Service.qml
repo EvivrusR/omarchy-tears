@@ -2,11 +2,13 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import qs.Commons
 import "widgets/Jsonc.js" as Jsonc
 import "widgets/Registry.js" as Registry
 import "widgets/Arrange.js" as Arrange
 import "widgets/Pet.js" as Pet
+import "widgets/Stream.js" as Stream
 import "arrange"
 
 // Desktop widgets service. One PanelWindow per (widget entry × screen) on the
@@ -83,31 +85,58 @@ Item {
     overrides = next
   }
 
-  // One signals sampler for every pet (was one dw-signals process per pet per tick).
-  // Commands from every pet's `signals` rows are merged; each pet reads custom.<key>.
+  // One shared sampler (bin/dw-stream, long-running) for every monitor, battery
+  // and pet: each used to start its own Python process per tick. `sample` is the
+  // latest dw-sample object, `signals` the pets' dw-signals object.
+  property var sample: null
   property var signals: null
-  readonly property var signalCommands: {
-    var seen = {}, out = []
-    for (var i = 0; i < widgets.length; i++) {
-      var w = widgets[i]
-      if (!w || w.type !== "pet" || w.enabled === false) continue
-      var rows = w.signals && typeof w.signals.length === "number" ? w.signals : []
-      for (var r = 0; r < rows.length; r++) { var s = rows[r]; if (s && s.key && s.command && !seen[s.key]) { seen[s.key] = true; out.push(String(s.key) + "=" + String(s.command)) } }
+  readonly property var streamPlan: Stream.plan(widgets)
+  readonly property int streamInterval: streamPlan.interval
+  readonly property var streamCommand: {
+    var a = Stream.args(streamPlan)
+    return a.length ? [String(Qt.resolvedUrl("bin/dw-stream")).replace(/^file:\/\//, "")].concat(a) : []
+  }
+  property bool streamStopping: false
+  // A new command only applies on the next start: stop, and start again from onExited.
+  function restartStream() {
+    if (stream.running) { streamStopping = true; stream.running = false }
+    else if (streamCommand.length) stream.running = true
+  }
+  onStreamCommandChanged: {
+    var key = JSON.stringify(streamCommand)
+    if (key === lastStreamKey) return
+    lastStreamKey = key
+    restartStream()
+  }
+  property string lastStreamKey: ""
+  Process {
+    id: stream
+    command: root.streamCommand
+    stdout: SplitParser {
+      onRead: function(line) {
+        var d
+        try { d = JSON.parse(line) } catch (e) { root.log("stream: bad json"); return }
+        if (d.sample) root.sample = d.sample
+        if (d.signals) root.signals = d.signals
+      }
+    }
+    onExited: function(code) {
+      if (root.streamStopping) { root.streamStopping = false; if (root.streamCommand.length) stream.running = true; return }
+      if (root.streamCommand.length) { root.log("stream exited (" + code + "), restarting in 5 s"); streamRetry.restart() }
+    }
+  }
+  Timer { id: streamRetry; interval: 5000; onTriggered: if (!stream.running && root.streamCommand.length) stream.running = true }
+
+  // Screens whose active workspace has a window on it: animated widgets pause
+  // there (pauseBehindWindows), since the wallpaper layer is hidden or blurred.
+  readonly property var covered: {
+    var out = ({}), mons = Hyprland.monitors.values
+    for (var i = 0; i < mons.length; i++) {
+      var ws = mons[i].activeWorkspace
+      out[mons[i].name] = !!ws && ws.toplevels.values.length > 0
     }
     return out
   }
-  readonly property int signalsInterval: {
-    var best = 0
-    for (var i = 0; i < widgets.length; i++) { var w = widgets[i]; if (w && w.type === "pet" && w.enabled !== false) { var s = Math.max(2, parseInt(w.intervalSec) || 5); if (!best || s < best) best = s } }
-    return (best || 5) * 1000
-  }
-  readonly property bool hasPets: signalsInterval > 0 && widgets.some(function(w) { return w && w.type === "pet" && w.enabled !== false })
-  Process {
-    id: sampler
-    command: [String(Qt.resolvedUrl("bin/dw-signals")).replace(/^file:\/\//, "")].concat(root.signalCommands.reduce(function(a, c) { return a.concat(["--command", c]) }, []))
-    stdout: StdioCollector { onStreamFinished: { try { root.signals = JSON.parse(text) } catch (e) { root.log("signals: bad json") } } }
-  }
-  Timer { interval: root.signalsInterval; running: root.hasPets; repeat: true; triggeredOnStart: true; onTriggered: if (!sampler.running) sampler.running = true }
 
   // Pets publish their state for each other's rules (pets.<name>.state / say / watch).
   property var petStates: ({})
@@ -195,7 +224,7 @@ Item {
       else if (v && !isNaN(Number(v))) root.setGrid(true, Number(v))
       return JSON.stringify(root.grid)
     }
-    function state(): string { return JSON.stringify({ arranging: root.arranging, widgets: root.widgets.length, geometries: Object.keys(root.geometries).length, overrides: Object.keys(root.overrides).length, grid: root.grid }) }
+    function state(): string { return JSON.stringify({ arranging: root.arranging, widgets: root.widgets.length, geometries: Object.keys(root.geometries).length, overrides: Object.keys(root.overrides).length, grid: root.grid, covered: root.covered, stream: root.streamCommand.slice(1) }) }
   }
 
   // Last good layout. A malformed edit keeps the previous one on screen.
@@ -432,7 +461,11 @@ Item {
             }
           }
         }
-        onLoaded: { item.config = win.widget; if ("service" in item) item.service = root }
+        onLoaded: {
+          item.config = win.widget
+          if ("service" in item) item.service = root
+          if ("behindWindows" in item) item.behindWindows = Qt.binding(function() { return !!root.covered[win.modelData.screen.name] })
+        }
         onStatusChanged: {
           if (status === Loader.Error)
             root.log("widget " + win.widget.__index + " (" + win.widget.type + ") failed to load")
